@@ -53,3 +53,9 @@
 - Files: Created src/components/auth-form.tsx
 - Test: `bun run build` succeeded.
 - Notes: Sign-in/sign-up toggle form. Uses shadcn/ui Button, Input, Card, Label. Calls useAuth().signIn/signUp. Handles loading and error states.
+
+### [2025-07-30] Task 10 Complete: Dashboard shell + auth gate
+
+- Files: Modified src/app/page.tsx, created src/components/dashboard.tsx
+- Test: `bun run build` succeeded.
+- Notes: page.tsx gates on auth state (loading→null, unauthenticated→AuthForm, authenticated→Dashboard). Dashboard is minimal shell (header + signout) — expands in Tasks 11/14. Deviation: plan's dashboard imports Task 11/14 components that don't exist yet; started minimal.
