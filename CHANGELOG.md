@@ -36,6 +36,12 @@
 - Test: `bun run build` succeeded.
 - Notes: DocAI requires Origin header — returns MISSING_OR_NULL_ORIGIN without it. Added default `http://localhost:3000` with `origin` option override.
 
+### [2025-07-30] Fix: orgId fetching — use session endpoint
+
+- Files: Modified src/app/api/auth/signin/route.ts, signup/route.ts
+- Test: `bun run build` succeeded.
+- Notes: Removed `/v1/orgs/current` calls. orgId now comes from DocAI's `/v1/auth/session` (documented: returns `{orgId}`). Avoids guessing response field names from the opaque `/v1/orgs/current` schema.
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
