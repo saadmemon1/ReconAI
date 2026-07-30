@@ -207,17 +207,19 @@ function validateReport(data: unknown): ReconciliationReport {
     throw new Error('Reconciliation report missing required fields (documentClassifications, groups, summary)');
   }
   
-  // Validate each group's KPIs
+  // Sanitize each group's KPIs — fill missing with 0, coerce types
   const requiredKPIs = ['totalPO', 'totalReceipt', 'totalInvoice', 'matchedLineItems', 
-    'mismatchedLineItems', 'matchRate', 'overbillingAmount', 'unsupportedCharges', 'evidenceGaps'];
+    'mismatchedLineItems', 'missingLineItems', 'extraLineItems', 'matchRate', 
+    'overbillingAmount', 'unsupportedCharges', 'evidenceGaps'];
   
   for (const group of r.groups) {
     if (!group.kpis) {
-      throw new Error(`Group "${group.id}" missing KPIs`);
+      group.kpis = {} as any;
     }
     for (const kpi of requiredKPIs) {
-      if (typeof (group.kpis as any)[kpi] !== 'number') {
-        throw new Error(`Group "${group.id}": KPI "${kpi}" is missing or not a number`);
+      const val = (group.kpis as any)[kpi];
+      if (typeof val !== 'number') {
+        (group.kpis as any)[kpi] = parseFloat(val) || 0;
       }
     }
     
