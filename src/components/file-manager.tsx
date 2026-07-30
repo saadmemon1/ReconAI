@@ -111,17 +111,16 @@ export function FileManager({ kbId }: { kbId: string }) {
     const jobs: { jobId: string; fileId: string }[] = [];
     
     if (data.jobs) {
-      for (const j of data.jobs) {
+      for (let i = 0; i < data.jobs.length && i < toParse.length; i++) {
+        const j = data.jobs[i];
         const jobId = j.job?.job_id || j.id;
         if (jobId) {
-          // DocAI may return one job per file or per batch — poll each file
-          toParse.forEach(fid => jobs.push({ jobId, fileId: fid }));
+          jobs.push({ jobId, fileId: toParse[i] });
         }
       }
     }
     
-    for (const { fileId } of jobs) {
-      const jobId = jobs[0].jobId; // same job for bulk
+    for (const { jobId, fileId } of jobs) {
       const poll = setInterval(async () => {
         const statusRes = await fetchDocAI(`/files/${fileId}/jobs/${jobId}`);
         const statusData = await statusRes.json();
