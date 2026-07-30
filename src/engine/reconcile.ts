@@ -160,25 +160,58 @@ Return ONLY valid JSON in this EXACT structure (no markdown, no explanation outs
 \`\`\`json
 {
   "documentClassifications": [
-    { "document": 1, "type": "purchase_order" | "receipt" | "invoice" | "other", "fileName": "..." },
-    ...
+    { "document": 1, "type": "purchase_order", "fileName": "..." },
+    { "document": 2, "type": "receipt", "fileName": "..." },
+    { "document": 3, "type": "invoice", "fileName": "..." }
   ],
   "groups": [
     {
       "id": "group_1",
       "documents": [1, 2, 3],
       "description": "PO-456 / Receipt / Invoice - Vendor ABC",
-      "kpis": { ... same KPI structure ... },
-      "findings": [ ... findings for this group ... ],
-      "lineItems": [ ... line items for this group ... ]
+      "kpis": {
+        "totalPO": 7200,
+        "totalReceipt": 7200,
+        "totalInvoice": 7200,
+        "matchedLineItems": 16,
+        "mismatchedLineItems": 0,
+        "missingLineItems": 0,
+        "extraLineItems": 0,
+        "matchRate": 100,
+        "overbillingAmount": 0,
+        "unsupportedCharges": 0,
+        "evidenceGaps": 0
+      },
+      "findings": [
+        {
+          "id": "F001",
+          "severity": "high",
+          "category": "price_mismatch",
+          "document": "Invoice INV-001",
+          "description": "Unit price charged is higher than PO agreed price",
+          "expected": "450.00",
+          "actual": "470.00",
+          "sourceCitations": ["Invoice: line 5: 'Unit Price: 470.00'"]
+        }
+      ],
+      "lineItems": [
+        {
+          "description": "Custom Ceramic Mugs",
+          "poQuantity": 16, "poUnitPrice": 450.00, "poTotal": 7200.00,
+          "receiptQuantity": 12, "invoiceQuantity": 16,
+          "invoiceUnitPrice": 470.00, "invoiceTotal": 7520.00,
+          "status": "partial"
+        }
+      ]
     }
   ],
-  "unmatchedDocuments": [5],
-  "summary": "..."
+  "unmatchedDocuments": [],
+  "summary": "Single PO matched with its receipt and invoice. One price discrepancy found."
 }
 \`\`\`
 
-Remember: Return ONLY the JSON object. No additional text, no markdown code blocks.`;
+IMPORTANT: Use EXACTLY these field names. For lineItems, MERGE matching items across documents by description — do NOT create separate rows per document. Cross-reference PO quantities, receipt quantities, and invoice quantities into single rows. Always include poQuantity, poUnitPrice, poTotal, receiptQuantity, invoiceQuantity, invoiceUnitPrice, invoiceTotal, and status for every line item.
+`;
 }
 
 // === JSON Parser (robust against LLM wrapping in markdown) ===
