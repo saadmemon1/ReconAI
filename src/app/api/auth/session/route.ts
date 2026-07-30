@@ -23,5 +23,6 @@ export async function GET(req: NextRequest) {
   }
 
   const data = await res.json();
+  console.log('[SESSION] DocAI response:', JSON.stringify(data, null, 2));
   return NextResponse.json({ authenticated: true, ...data });
 }
