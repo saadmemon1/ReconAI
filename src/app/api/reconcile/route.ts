@@ -41,7 +41,6 @@ export async function POST(req: NextRequest) {
         docaiSessionToken: session.token,
       });
       const segData = await segRes.json();
-      console.log('[RECONCILE] Segments response:', JSON.stringify(segData, null, 2).slice(0, 500));
       let segments = segData.segments || segData.items || [];
       // Ensure segments is an array (API might return segments as object)
       if (!Array.isArray(segments)) {

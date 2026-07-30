@@ -3,12 +3,15 @@ import { useEffect, useState, useRef } from 'react';
 import { useAuth } from './auth-provider';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
+import { Badge } from './ui/badge';
 
 interface FileItem {
   id: string;
   filename: string;
   created_at: string;
 }
+
+const PARSED_KEY = 'reconai-parsed-files';
 
 export function FileManager({ kbId }: { kbId: string }) {
   const { fetchDocAI } = useAuth();
@@ -17,6 +20,25 @@ export function FileManager({ kbId }: { kbId: string }) {
   const [jobStatuses, setJobStatuses] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Track parsed file IDs (persisted in localStorage)
+  const [parsedIds, setParsedIds] = useState<Set<string>>(new Set());
+  
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PARSED_KEY);
+      if (saved) setParsedIds(new Set(JSON.parse(saved)));
+    } catch {}
+  }, []);
+
+  const markParsed = (fileId: string) => {
+    setParsedIds(prev => {
+      const next = new Set(prev);
+      next.add(fileId);
+      localStorage.setItem(PARSED_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
 
   const loadFiles = async () => {
     const res = await fetchDocAI(`/files?kb_id=${kbId}`);
@@ -55,7 +77,6 @@ export function FileManager({ kbId }: { kbId: string }) {
   };
 
   const viewFile = (fileId: string) => {
-    // Open in new tab -- the proxy will stream the file
     window.open(`/api/docai/files/${fileId}/content`, '_blank');
   };
 
@@ -72,24 +93,23 @@ export function FileManager({ kbId }: { kbId: string }) {
     });
     
     const data = await res.json();
-    console.log('[PARSE] Bulk parse response:', JSON.stringify(data));
     const jobId = data.job_id || data.jobs?.[0]?.job?.job_id || data.jobs?.[0]?.id || data.job_ids?.[0];
     
     if (jobId) {
-      console.log('[PARSE] Polling job:', jobId);
-      // Poll job status
       const poll = setInterval(async () => {
         const statusRes = await fetchDocAI(`/files/${fileId}/jobs/${jobId}`);
         const statusData = await statusRes.json();
-        console.log('[PARSE] Job status:', JSON.stringify(statusData));
         const status = statusData.status || statusData.job?.status || statusData.job_status;
         setJobStatuses(prev => ({ ...prev, [fileId]: status }));
         if (status === 'completed' || status === 'failed' || status === 'cancelled') {
           clearInterval(poll);
           setParsing(prev => prev.filter(id => id !== fileId));
+          if (status === 'completed') markParsed(fileId);
           loadFiles();
         }
       }, 2000);
+    } else {
+      setParsing(prev => prev.filter(id => id !== fileId));
     }
   };
 
@@ -116,10 +136,16 @@ export function FileManager({ kbId }: { kbId: string }) {
         <p className="text-sm text-secondary">No files in this knowledge base. Upload a file to begin.</p>
       ) : (
         <div className="space-y-2">
-          {files.map(f => (
+          {files.map(f => {
+            const isParsed = parsedIds.has(f.id);
+            const isParsing = parsing.includes(f.id);
+            return (
             <Card key={f.id} className="p-3 flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">{f.filename}</p>
+                <p className="text-sm font-medium">
+                  {f.filename}
+                  {isParsed && <Badge variant="outline" className="ml-2 text-xs text-success">Parsed</Badge>}
+                </p>
                 {jobStatuses[f.id] && (
                   <span className="text-xs text-secondary">
                     Parse: {jobStatuses[f.id]}
@@ -130,13 +156,19 @@ export function FileManager({ kbId }: { kbId: string }) {
                 <Button variant="ghost" size="sm" onClick={() => viewFile(f.id)}>
                   View
                 </Button>
-                <Button 
-                  variant="ghost" size="sm"
-                  onClick={() => parseFile(f.id)}
-                  disabled={parsing.includes(f.id)}
-                >
-                  {parsing.includes(f.id) ? 'Parsing...' : 'Parse'}
-                </Button>
+                {isParsed ? (
+                  <Button variant="ghost" size="sm" disabled className="text-success">
+                    Parsed ✓
+                  </Button>
+                ) : (
+                  <Button 
+                    variant="ghost" size="sm"
+                    onClick={() => parseFile(f.id)}
+                    disabled={isParsing}
+                  >
+                    {isParsing ? 'Parsing...' : 'Parse'}
+                  </Button>
+                )}
                 <Button 
                   variant="ghost" size="sm"
                   className="text-destructive"
@@ -146,7 +178,7 @@ export function FileManager({ kbId }: { kbId: string }) {
                 </Button>
               </div>
             </Card>
-          ))}
+          )})}
         </div>
       )}
     </div>

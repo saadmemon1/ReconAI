@@ -24,7 +24,16 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
   useEffect(() => {
     fetchDocAI(`/files?kb_id=${kbId}`)
       .then(r => r.json())
-      .then(d => setFiles(d.files || d.items || []))
+      .then(d => {
+        const allFiles = d.files || d.items || [];
+        // Only show parsed files in Reconcile tab
+        let parsedIds: string[] = [];
+        try {
+          parsedIds = JSON.parse(localStorage.getItem('reconai-parsed-files') || '[]');
+        } catch {}
+        const parsedSet = new Set(parsedIds);
+        setFiles(allFiles.filter((f: FileItem) => parsedSet.has(f.id)));
+      })
       .catch(() => {});
   }, [kbId]);
 
