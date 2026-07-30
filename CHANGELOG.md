@@ -90,6 +90,15 @@
 - Test: `bun run build` (Environments: .env.local) succeeded.
 - Notes: No more dev fallbacks for SESSION_SECRET, DOCAI_BASE_URL, LM_STUDIO_URL, DEEPSEEK_API_KEY. All values must come from .env.local.
 
+### [2025-07-30] UI polish: minimalist-ui QA fixes
+
+- Files: Modified globals.css, auth-provider.tsx, auth-form.tsx
+- Test: `bun run build` + `bun test` (2/2).
+- Changes:
+  - Card elevation: level-1 shadow (0 1px 2px rgba(16,24,40,.06))
+  - Animations: 150ms ease-out on all interactive elements
+  - Error recovery: signIn/signUp return {ok, error} with actual API error text; auth form displays server errors
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
