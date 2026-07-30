@@ -1,10 +1,11 @@
 'use client';
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 
 interface AuthState {
   authenticated: boolean;
   user: { email?: string; name?: string } | null;
   orgId: string | null;
+  currentKnowledgeBaseId: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<boolean>;
   signUp: (email: string, password: string, name: string, org: string) => Promise<boolean>;
@@ -19,21 +20,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authenticated: false,
     user: null as { email?: string; name?: string } | null,
     orgId: null as string | null,
+    currentKnowledgeBaseId: null as string | null,
     loading: true,
   });
 
-  useEffect(() => {
-    fetch('/api/auth/session')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.authenticated) {
-          setState({ authenticated: true, user: data.user || null, orgId: data.orgId, loading: false });
-        } else {
-          setState(s => ({ ...s, loading: false }));
-        }
-      })
-      .catch(() => setState(s => ({ ...s, loading: false })));
+  const checkSession = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/session');
+      if (!res.ok) {
+        setState(s => ({ ...s, authenticated: false, loading: false }));
+        return;
+      }
+      const data = await res.json();
+      if (data?.authenticated) {
+        setState({
+          authenticated: true,
+          user: data.user || null,
+          orgId: data.orgId || null,
+          currentKnowledgeBaseId: data.currentKnowledgeBaseId || null,
+          loading: false,
+        });
+      } else {
+        setState(s => ({ ...s, authenticated: false, loading: false }));
+      }
+    } catch {
+      setState(s => ({ ...s, loading: false }));
+    }
   }, []);
+
+  useEffect(() => { checkSession(); }, [checkSession]);
 
   const signIn = async (email: string, password: string) => {
     const res = await fetch('/api/auth/signin', {
@@ -42,8 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     if (res.ok) {
-      const data = await res.json();
-      setState({ authenticated: true, user: { email }, orgId: data.orgId, loading: false });
+      await checkSession();
       return true;
     }
     return false;
@@ -56,8 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password, name, organization: org }),
     });
     if (res.ok) {
-      const data = await res.json();
-      setState({ authenticated: true, user: { email, name }, orgId: data.orgId, loading: false });
+      await checkSession();
       return true;
     }
     return false;
@@ -65,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await fetch('/api/auth/signout', { method: 'POST' });
-    setState({ authenticated: false, user: null, orgId: null, loading: false });
+    setState({ authenticated: false, user: null, orgId: null, currentKnowledgeBaseId: null, loading: false });
   };
 
   const fetchDocAI = (path: string, options?: RequestInit) => {
