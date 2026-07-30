@@ -64,8 +64,10 @@ export function KBManager({ selectedKB, onSelect }: {
         {kbs.map(kb => (
           <Card 
             key={kb.id}
-            className={`p-3 cursor-pointer flex items-center gap-3 ${
-              selectedKB === kb.id ? 'ring-2 ring-foreground' : ''
+            className={`p-3 cursor-pointer flex items-center gap-3 border transition-all ${
+              selectedKB === kb.id 
+                ? 'border-foreground bg-muted' 
+                : 'border-transparent hover:border-border hover:bg-muted/50'
             }`}
             onClick={() => onSelect(kb.id)}
           >
