@@ -66,6 +66,12 @@
 - Test: `bun run build` succeeded, `/api/reconcile` registered as dynamic route.
 - Notes: POST handler fetches segments from DocAI per file, routes LLM to LM Studio or DeepSeek, calls engine. Needs env vars for DeepSeek API key and LM Studio URL in production.
 
+### [2025-07-30] Task 14 Complete: Reconcile runner + dashboard expansion
+
+- Files: Created reconcile-runner.tsx, report-viewer.tsx (stub), updated dashboard.tsx
+- Test: `bun run build` succeeded.
+- Notes: Dashboard now has full layout: header with credits + signout, KB manager section, Files/Reconcile tabs. Reconcile tab shows file checkbox list + model selector + reconcile button. Report saved to localStorage. ReportViewer is stub — full UI in Task 15.
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
