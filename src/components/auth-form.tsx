@@ -54,7 +54,7 @@ export function AuthForm() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="email" className="mb-1">Email</Label>
+            <Label htmlFor="email" className="mb-1.5">Email</Label>
             <Input 
               id="email" type="email" value={email} 
               onChange={e => setEmail(e.target.value)} required 
@@ -62,7 +62,7 @@ export function AuthForm() {
           </div>
           
           <div>
-            <Label htmlFor="password" className="mb-1">Password</Label>
+            <Label htmlFor="password" className="mb-1.5">Password</Label>
             <Input 
               id="password" type="password" value={password}
               onChange={e => setPassword(e.target.value)} required 
@@ -72,7 +72,7 @@ export function AuthForm() {
           {mode === 'signup' && (
             <>
               <div>
-                <Label htmlFor="name" className="mb-1">Name</Label>
+                <Label htmlFor="name" className="mb-1.5">Name</Label>
                 <Input id="name" value={name} onChange={e => setName(e.target.value)} required />
               </div>
               <div>
