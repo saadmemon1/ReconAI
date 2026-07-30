@@ -107,7 +107,7 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
                   type="checkbox"
                   checked={selectedIds.has(f.id)}
                   onChange={() => toggle(f.id)}
-                  className="rounded border-border"
+                  className="w-4 h-4 rounded border-border cursor-pointer"
                 />
                 <span className="text-sm">{f.filename}</span>
               </label>

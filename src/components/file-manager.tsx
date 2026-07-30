@@ -194,7 +194,7 @@ export function FileManager({ kbId }: { kbId: string }) {
               type="checkbox"
               checked={selectedIds.size === files.length && files.length > 0}
               onChange={toggleAll}
-              className="rounded border-border"
+              className="w-4 h-4 rounded border-border cursor-pointer"
             />
             Select all ({files.length} files)
           </label>
@@ -211,7 +211,7 @@ export function FileManager({ kbId }: { kbId: string }) {
                   type="checkbox"
                   checked={selectedIds.has(f.id)}
                   onChange={() => toggleSelect(f.id)}
-                  className="rounded border-border"
+                  className="w-4 h-4 rounded border-border cursor-pointer"
                 />
                 <div>
                   <p className="text-sm font-medium">
