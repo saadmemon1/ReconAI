@@ -78,6 +78,12 @@
 - Test: `bun run build` succeeded.
 - Notes: KPI grid, findings by severity with source citations, per-group line items table, unmatched docs section, summary footer. Uses proper LineItem types from engine.
 
+### [2025-07-30] Task 16 Complete: Environment config (FINAL)
+
+- Files: Created .env.local, modified .gitignore
+- Test: `bun run build` (Environments: .env.local), `bun test` (2/2).
+- Notes: DOCAI_BASE_URL, LM_STUDIO_URL, DEEPSEEK_API_KEY (empty — fill from platform.deepseek.com), SESSION_SECRET (generated). .env*.local added to gitignore. All 16 tasks complete.
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
