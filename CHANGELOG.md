@@ -11,3 +11,9 @@
 - Files: Created components.json, src/components/ui/{button,input,card,select,dialog,label,badge,separator}.tsx, src/lib/utils.ts. Added jose dependency.
 - Test: `bun run build` succeeded (compiled in ~2.2s).
 - Notes: shadcn initialized with defaults. All 8 components added successfully.
+
+### [2025-07-30] Task 3 Complete: Apply minimalist-ui design tokens
+
+- Files: Modified src/app/globals.css
+- Test: `bun run build` succeeded (compiled in ~1.7s).
+- Notes: Replaced shadcn default CSS variables with minimalist-ui spec colors, radii (8/10/12px), type scale, and added success/warning colors.
