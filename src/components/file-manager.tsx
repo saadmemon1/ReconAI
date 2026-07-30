@@ -27,19 +27,21 @@ export function FileManager({ kbId }: { kbId: string }) {
   useEffect(() => { loadFiles(); }, [kbId]);
 
   const uploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
     setUploading(true);
     
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('knowledge_base_id', kbId);
-    formData.append('filename', file.name);
+    for (const file of Array.from(files)) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('knowledge_base_id', kbId);
+      formData.append('filename', file.name);
 
-    await fetchDocAI('/files', {
-      method: 'POST',
-      body: formData,
-    });
+      await fetchDocAI('/files', {
+        method: 'POST',
+        body: formData,
+      });
+    }
     
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -96,6 +98,7 @@ export function FileManager({ kbId }: { kbId: string }) {
           <input 
             ref={fileInputRef}
             type="file" 
+            multiple
             onChange={uploadFile} 
             className="hidden" 
             id="file-upload"
