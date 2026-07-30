@@ -42,9 +42,13 @@ export async function POST(req: NextRequest) {
       });
       const segData = await segRes.json();
       let segments = segData.segments || segData.items || [];
-      // Ensure segments is an array (API might return segments as object)
+      // Ensure segments is an array — API returns flat array directly
       if (!Array.isArray(segments)) {
         segments = Array.isArray(segData) ? segData : [];
+      }
+      // If the first fallback gave empty array but segData IS the array, use it
+      if (segments.length === 0 && Array.isArray(segData)) {
+        segments = segData;
       }
       // Get fileName from segments if file metadata doesn't have it
       if (fileName === 'Unknown' && segments.length > 0) {
