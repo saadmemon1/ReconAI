@@ -30,6 +30,12 @@
 - Test: `bun run build` succeeded (compiled in ~2.4s).
 - Notes: Generic DocAI API proxy helper with session cookie forwarding, handles JSON/FormData/raw bodies.
 
+### [2025-07-30] Fix: Add Origin header to docaiFetch
+
+- Files: Modified src/lib/docai-proxy.ts
+- Test: `bun run build` succeeded.
+- Notes: DocAI requires Origin header — returns MISSING_OR_NULL_ORIGIN without it. Added default `http://localhost:3000` with `origin` option override.
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
