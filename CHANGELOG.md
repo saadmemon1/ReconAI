@@ -23,3 +23,9 @@
 - Files: Created src/lib/session.ts
 - Test: `npx tsx` round-trip test passed (PASS). Build also succeeds.
 - Notes: Uses jose for JWT-based session encryption. Default dev secret used; will be overridden by .env.local in Task 16.
+
+### [2025-07-30] Task 5 Complete: DocAI proxy helper
+
+- Files: Created src/lib/docai-proxy.ts
+- Test: `bun run build` succeeded (compiled in ~2.4s).
+- Notes: Generic DocAI API proxy helper with session cookie forwarding, handles JSON/FormData/raw bodies.
