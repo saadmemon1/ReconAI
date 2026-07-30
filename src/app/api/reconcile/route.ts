@@ -115,10 +115,6 @@ export async function POST(req: NextRequest) {
       llmCall
     );
 
-    console.log('[RECONCILE] Prompt preview:', 
-      documents.map(d => `\n${d.fileName}: ${d.segments.length} segs, ${d.segments.reduce((s: number, seg: any) => s + seg.content.length, 0)} chars`)
-    );
-
     return NextResponse.json(result);
   } catch (error: any) {
     console.error('Reconciliation error:', error);

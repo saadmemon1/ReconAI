@@ -200,7 +200,7 @@ function LineItemsTable({ lineItems }: { lineItems: LineItem[] }) {
                 <span className={`text-xs ${
                   li.status === 'matched' ? 'text-success' : 'text-warning'
                 }`}>
-                  {li.status.replace(/_/g, ' ')}
+                  {(li.status || 'unknown').replace(/_/g, ' ')}
                 </span>
               </td>
             </tr>
