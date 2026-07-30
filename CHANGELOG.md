@@ -48,6 +48,12 @@
 - Test: `bun run build` succeeded.
 - Notes: DocAI session response is `{ session: { currentOrgId, currentKnowledgeBaseId, user, ... } }` — not flat. Session route now extracts nested fields. AuthProvider calls checkSession() after signIn/signUp to populate orgId + KB info. Full response shape documented in docai skill.
 
+### [2025-07-30] Task 11 Complete: Credit display, KB manager, file manager, model selector
+
+- Files: Created credit-display.tsx, kb-manager.tsx, file-manager.tsx, model-selector.tsx
+- Test: `bun run build` succeeded.
+- Notes: KB manager with create/delete, file manager with upload/parse/delete/view + job polling, model selector fetches LM Studio models + hardcoded DeepSeek options. Fixed Button `asChild` → `onClick` (shadcn uses @base-ui/react which lacks asChild).
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
