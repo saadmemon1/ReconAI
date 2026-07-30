@@ -21,14 +21,14 @@ export function AuthForm() {
     setError('');
     setLoading(true);
     
-    let ok: boolean;
+    let result: { ok: boolean; error?: string };
     if (mode === 'signin') {
-      ok = await signIn(email, password);
+      result = await signIn(email, password);
     } else {
-      ok = await signUp(email, password, name, org);
+      result = await signUp(email, password, name, org);
     }
     
-    if (!ok) setError('Authentication failed. Check credentials.');
+    if (!result.ok) setError(result.error || 'Authentication failed');
     setLoading(false);
   };
 

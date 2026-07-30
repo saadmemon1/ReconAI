@@ -7,8 +7,8 @@ interface AuthState {
   orgId: string | null;
   currentKnowledgeBaseId: string | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<boolean>;
-  signUp: (email: string, password: string, name: string, org: string) => Promise<boolean>;
+  signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  signUp: (email: string, password: string, name: string, org: string) => Promise<{ ok: boolean; error?: string }>;
   signOut: () => Promise<void>;
   fetchDocAI: (path: string, options?: RequestInit) => Promise<Response>;
 }
@@ -58,9 +58,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (res.ok) {
       await checkSession();
-      return true;
+      return { ok: true };
     }
-    return false;
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: data.error || 'Sign in failed' };
   };
 
   const signUp = async (email: string, password: string, name: string, org: string) => {
@@ -71,9 +72,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (res.ok) {
       await checkSession();
-      return true;
+      return { ok: true };
     }
-    return false;
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: data.error || 'Sign up failed' };
   };
 
   const signOut = async () => {
