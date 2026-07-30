@@ -22,109 +22,96 @@
 
 - Files: Created src/lib/session.ts
 - Test: `npx tsx` round-trip test passed (PASS). Build also succeeds.
-- Notes: Uses jose for JWT-based session encryption. Default dev secret used; will be overridden by .env.local in Task 16.
+- Notes: Uses jose for JWT-based session encryption.
 
 ### [2025-07-30] Task 5 Complete: DocAI proxy helper
 
 - Files: Created src/lib/docai-proxy.ts
-- Test: `bun run build` succeeded (compiled in ~2.4s).
+- Test: `bun run build` succeeded.
 - Notes: Generic DocAI API proxy helper with session cookie forwarding, handles JSON/FormData/raw bodies.
-
-### [2025-07-30] Fix: Add Origin header to docaiFetch
-
-- Files: Modified src/lib/docai-proxy.ts
-- Test: `bun run build` succeeded.
-- Notes: DocAI requires Origin header — returns MISSING_OR_NULL_ORIGIN without it. Added default `http://localhost:3000` with `origin` option override.
-
-### [2025-07-30] Fix: orgId fetching — use session endpoint
-
-- Files: Modified src/app/api/auth/signin/route.ts, signup/route.ts
-- Test: `bun run build` succeeded.
-- Notes: Removed `/v1/orgs/current` calls. orgId now comes from DocAI's `/v1/auth/session` (documented: returns `{orgId}`). Avoids guessing response field names from the opaque `/v1/orgs/current` schema.
-
-### [2025-07-30] Fix: Proper session response parsing
-
-- Files: Modified session/route.ts, auth-provider.tsx, docai skill + api-endpoints reference
-- Test: `bun run build` succeeded.
-- Notes: DocAI session response is `{ session: { currentOrgId, currentKnowledgeBaseId, user, ... } }` — not flat. Session route now extracts nested fields. AuthProvider calls checkSession() after signIn/signUp to populate orgId + KB info. Full response shape documented in docai skill.
-
-### [2025-07-30] Task 11 Complete: Credit display, KB manager, file manager, model selector
-
-- Files: Created credit-display.tsx, kb-manager.tsx, file-manager.tsx, model-selector.tsx
-- Test: `bun run build` succeeded.
-- Notes: KB manager with create/delete, file manager with upload/parse/delete/view + job polling, model selector fetches LM Studio models + hardcoded DeepSeek options. Fixed Button `asChild` → `onClick` (shadcn uses @base-ui/react which lacks asChild).
-
-### [2025-07-30] Task 12 Complete: Reconciliation engine (portable, standalone)
-
-- Files: Created src/engine/reconcile.ts, src/engine/__tests__/reconcile.test.ts
-- Test: `bun run build` succeeded. `bun test` passes (2/2).
-- Notes: Pure TS reconcile function with injectable LLM caller. Full type system, LLM prompt with classification/grouping/severity rules, robust JSON parser. validateReport fixed to validate per-group KPIs (plan had flat structure mismatch).
-
-### [2025-07-30] Task 13 Complete: Reconciliation API route
-
-- Files: Created src/app/api/reconcile/route.ts
-- Test: `bun run build` succeeded, `/api/reconcile` registered as dynamic route.
-- Notes: POST handler fetches segments from DocAI per file, routes LLM to LM Studio or DeepSeek, calls engine. Needs env vars for DeepSeek API key and LM Studio URL in production.
-
-### [2025-07-30] Task 14 Complete: Reconcile runner + dashboard expansion
-
-- Files: Created reconcile-runner.tsx, report-viewer.tsx (stub), updated dashboard.tsx
-- Test: `bun run build` succeeded.
-- Notes: Dashboard now has full layout: header with credits + signout, KB manager section, Files/Reconcile tabs. Reconcile tab shows file checkbox list + model selector + reconcile button. Report saved to localStorage. ReportViewer is stub — full UI in Task 15.
-
-### [2025-07-30] Task 15 Complete: Report viewer (full UI)
-
-- Files: Replaced src/components/report-viewer.tsx stub with full implementation
-- Test: `bun run build` succeeded.
-- Notes: KPI grid, findings by severity with source citations, per-group line items table, unmatched docs section, summary footer. Uses proper LineItem types from engine.
-
-### [2025-07-30] Task 16 Complete: Environment config (FINAL)
-
-- Files: Created .env.local, modified .gitignore
-- Test: `bun run build` (Environments: .env.local), `bun test` (2/2).
-- Notes: DOCAI_BASE_URL, LM_STUDIO_URL, DEEPSEEK_API_KEY (empty — fill from platform.deepseek.com), SESSION_SECRET (generated). .env*.local added to gitignore. All 16 tasks complete.
-
-### [2025-07-30] Cleanup: Removed all hardcoded URLs/keys
-
-- Files: Modified session.ts, docai-proxy.ts, reconcile/route.ts
-- Test: `bun run build` (Environments: .env.local) succeeded.
-- Notes: No more dev fallbacks for SESSION_SECRET, DOCAI_BASE_URL, LM_STUDIO_URL, DEEPSEEK_API_KEY. All values must come from .env.local.
-
-### [2025-07-30] UI polish: minimalist-ui QA fixes
-
-- Files: Modified globals.css, auth-provider.tsx, auth-form.tsx
-- Test: `bun run build` + `bun test` (2/2).
-- Changes:
-  - Card elevation: level-1 shadow (0 1px 2px rgba(16,24,40,.06))
-  - Animations: 150ms ease-out on all interactive elements
-  - Error recovery: signIn/signUp return {ok, error} with actual API error text; auth form displays server errors
 
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
-- Test: `bun run build` succeeded, all 4 routes appear as dynamic API routes.
-- Notes: Uses `/v1/orgs/current` to get org ID after login (verified in DocAI OpenAPI spec).
+- Test: `bun run build` succeeded.
+- Notes: Uses /v1/orgs/current (verified in OpenAPI spec).
 
 ### [2025-07-30] Task 7 Complete: Catch-all DocAI proxy route
 
 - Files: Created src/app/api/docai/[...path]/route.ts
-- Test: `bun run build` succeeded, route `/api/docai/[...path]` registered as dynamic.
-- Notes: Handles GET/POST/DELETE/PATCH, forwards query params, multipart, JSON, raw bodies. Session decryption per-request.
+- Test: `bun run build` succeeded.
 
 ### [2025-07-30] Task 8 Complete: Root layout + session provider
 
 - Files: Modified src/app/layout.tsx, created src/components/auth-provider.tsx
 - Test: `bun run build` succeeded.
-- Notes: AuthProvider wraps children with React context. Provides signIn/signUp/signOut/fetchDocAI. Checks session on mount. Loading/auth state managed in context.
 
 ### [2025-07-30] Task 9 Complete: Auth form component
 
 - Files: Created src/components/auth-form.tsx
 - Test: `bun run build` succeeded.
-- Notes: Sign-in/sign-up toggle form. Uses shadcn/ui Button, Input, Card, Label. Calls useAuth().signIn/signUp. Handles loading and error states.
 
 ### [2025-07-30] Task 10 Complete: Dashboard shell + auth gate
 
 - Files: Modified src/app/page.tsx, created src/components/dashboard.tsx
 - Test: `bun run build` succeeded.
-- Notes: page.tsx gates on auth state (loading→null, unauthenticated→AuthForm, authenticated→Dashboard). Dashboard is minimal shell (header + signout) — expands in Tasks 11/14. Deviation: plan's dashboard imports Task 11/14 components that don't exist yet; started minimal.
+
+### [2025-07-30] Task 11 Complete: Credit display, KB manager, file manager, model selector
+
+- Files: Created credit-display.tsx, kb-manager.tsx, file-manager.tsx, model-selector.tsx
+- Test: `bun run build` succeeded.
+
+### [2025-07-30] Task 12 Complete: Reconciliation engine
+
+- Files: Created src/engine/reconcile.ts, src/engine/__tests__/reconcile.test.ts
+- Test: `bun test` passes (2/2).
+
+### [2025-07-30] Task 13 Complete: Reconciliation API route
+
+- Files: Created src/app/api/reconcile/route.ts
+- Test: `bun run build` succeeded.
+
+### [2025-07-30] Task 14 Complete: Reconcile runner + dashboard
+
+- Files: Created reconcile-runner.tsx, report-viewer.tsx (stub), updated dashboard.tsx
+- Test: `bun run build` succeeded.
+
+### [2025-07-30] Task 15 Complete: Report viewer (full UI)
+
+- Files: Replaced src/components/report-viewer.tsx stub with full implementation
+- Test: `bun run build` succeeded.
+
+### [2025-07-30] Task 16 Complete: Environment config (FINAL)
+
+- Files: Created .env.local, modified .gitignore
+- Test: `bun run build` (Environments: .env.local).
+
+### [2025-07-30] Cleanup: Removed all hardcoded URLs/keys
+
+- Files: Modified session.ts, docai-proxy.ts, reconcile/route.ts
+- Test: `bun run build` succeeded.
+
+### [2025-07-30] Fixes: Origin header, session parsing, orgId
+
+- Files: docai-proxy.ts, signin/route.ts, signup/route.ts, session/route.ts, auth-provider.tsx
+- DocAI requires Origin header. Session response nested under {session: {currentOrgId, ...}}. signIn/signUp return {ok, error}.
+
+### [2025-07-30] UI polish: elevation, animations, error recovery
+
+- Files: globals.css, auth-provider.tsx, auth-form.tsx
+- Card elevation (0 1px 2px rgba), 150ms ease-out transitions, real API errors in auth form
+
+### [2025-07-30] UI polish: label spacing, multi-upload, button colors, KB selection
+
+- Files: auth-form.tsx, file-manager.tsx, button.tsx, kb-manager.tsx
+- Labels now mb-1.5 spacing. File upload supports multiple selection. Secondary buttons use bg-muted. KB selection uses border+bg-muted instead of ring-2.
+
+### [2025-07-30] Fixes: model ID, segments mapping, parse job ID, job status
+
+- Files: model-selector.tsx, reconcile/route.ts, file-manager.tsx
+- Removed double provider prefix. Segments normalized (markdown→content). Parse job ID from jobs[0].job.job_id. Job status from job.status.
+
+### [2025-07-30] Feature: Parsed file detection, disable re-parse, reconcile filter
+
+- Files: file-manager.tsx, reconcile-runner.tsx, reconcile/route.ts
+- Tracked via localStorage. "Parsed ✓" badge on completed files. Parse button disabled for parsed files. Reconcile tab only shows parsed files. Removed debug logs.

@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
         docaiSessionToken: session.token,
       });
       const fileData = await fileRes.json();
-      const fileName = fileData.filename || fileData.name || 'Unknown';
+      let fileName = fileData.filename || fileData.name || 'Unknown';
       
       const segRes = await docaiFetch(`/v1/files/${fileId}/segments`, {
         docaiSessionToken: session.token,
@@ -45,6 +45,10 @@ export async function POST(req: NextRequest) {
       // Ensure segments is an array (API might return segments as object)
       if (!Array.isArray(segments)) {
         segments = Array.isArray(segData) ? segData : [];
+      }
+      // Get fileName from segments if file metadata doesn't have it
+      if (fileName === 'Unknown' && segments.length > 0) {
+        fileName = segments[0]?.docName || fileName;
       }
       // Normalize API response: map markdown→content, title→type, assign numeric index
       segments = segments.map((s: any, i: number) => ({
@@ -57,9 +61,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Determine LLM provider and endpoint
-    const [provider, modelName] = modelId.includes('/') 
-      ? modelId.split('/') as [string, string]
-      : ['lmstudio', modelId];
+    // modelId format: "lmstudio/qwen3.6-35b-a3b-ud-mlx" or "lmstudio/qwen/qwen3-vl-30b" or "deepseek/deepseek-chat"
+    const slashIdx = modelId.indexOf('/');
+    const provider = slashIdx > 0 ? modelId.slice(0, slashIdx) : 'lmstudio';
+    const modelPath = slashIdx > 0 ? modelId.slice(slashIdx + 1) : modelId;
+    // LM Studio expects just the model filename (last path segment)
+    // DeepSeek expects the model name as-is
+    const modelName = provider === 'deepseek' 
+      ? modelPath 
+      : modelPath.split('/').pop() || modelPath;
     
     const llmUrl = provider === 'deepseek'
       ? `${DEEPSEEK_BASE_URL}/chat/completions`

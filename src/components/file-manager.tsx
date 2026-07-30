@@ -104,7 +104,10 @@ export function FileManager({ kbId }: { kbId: string }) {
         if (status === 'completed' || status === 'failed' || status === 'cancelled') {
           clearInterval(poll);
           setParsing(prev => prev.filter(id => id !== fileId));
-          if (status === 'completed') markParsed(fileId);
+          if (status === 'completed') {
+            markParsed(fileId);
+            window.dispatchEvent(new Event('credits-refresh'));
+          }
           loadFiles();
         }
       }, 2000);
