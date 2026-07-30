@@ -34,7 +34,7 @@
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
 - Test: `bun run build` succeeded, all 4 routes appear as dynamic API routes.
-- Notes: Uses `/v1/orgs/current` to get org ID after login. Not in docai skill endpoint list — may need adjustment during integration testing with live DocAI.
+- Notes: Uses `/v1/orgs/current` to get org ID after login (verified in DocAI OpenAPI spec).
 
 ### [2025-07-30] Task 7 Complete: Catch-all DocAI proxy route
 
