@@ -223,13 +223,12 @@ function validateReport(data: unknown): ReconciliationReport {
       }
     }
     
-    // Validate findings
-    for (const f of (group.findings || [])) {
-      if (!f.severity || !f.category || !f.description) {
-        throw new Error(`Group "${group.id}": finding missing required fields`);
-      }
+    // Validate findings — skip incomplete ones instead of throwing
+    group.findings = (group.findings || []).filter((f: any) => {
+      if (!f.severity || !f.category || !f.description) return false;
       f.id = f.id || `F${String(Math.random()).slice(2, 8)}`;
-    }
+      return true;
+    });
     
     // Assign findingIds to line items
     group.lineItems = (group.lineItems || []).map(li => ({
