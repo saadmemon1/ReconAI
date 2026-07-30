@@ -47,6 +47,12 @@ export async function POST(req: NextRequest) {
       if (!Array.isArray(segments)) {
         segments = Array.isArray(segData) ? segData : [];
       }
+      // Normalize API response: map markdown→content, title→type, assign numeric index
+      segments = segments.map((s: any, i: number) => ({
+        index: i,
+        content: s.markdown || s.content || '',
+        type: s.title || s.type,
+      }));
       
       documents.push({ segments, fileName });
     }

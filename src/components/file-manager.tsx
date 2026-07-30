@@ -73,7 +73,7 @@ export function FileManager({ kbId }: { kbId: string }) {
     
     const data = await res.json();
     console.log('[PARSE] Bulk parse response:', JSON.stringify(data));
-    const jobId = data.job_id || data.jobs?.[0]?.id || data.job_ids?.[0];
+    const jobId = data.job_id || data.jobs?.[0]?.job?.job_id || data.jobs?.[0]?.id || data.job_ids?.[0];
     
     if (jobId) {
       console.log('[PARSE] Polling job:', jobId);
@@ -82,7 +82,7 @@ export function FileManager({ kbId }: { kbId: string }) {
         const statusRes = await fetchDocAI(`/files/${fileId}/jobs/${jobId}`);
         const statusData = await statusRes.json();
         console.log('[PARSE] Job status:', JSON.stringify(statusData));
-        const status = statusData.status || statusData.job_status;
+        const status = statusData.status || statusData.job?.status || statusData.job_status;
         setJobStatuses(prev => ({ ...prev, [fileId]: status }));
         if (status === 'completed' || status === 'failed' || status === 'cancelled') {
           clearInterval(poll);
