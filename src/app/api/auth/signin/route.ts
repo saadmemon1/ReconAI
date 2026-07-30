@@ -3,7 +3,7 @@ import { docaiFetch } from '@/lib/docai-proxy';
 import { encryptDocAISession, getSessionCookieHeader } from '@/lib/session';
 
 export async function POST(req: NextRequest) {
-  const { email, password, name, organization } = await req.json();
+  const { email, password } = await req.json();
   
   const res = await docaiFetch('/v1/auth/sign-in/email', {
     method: 'POST',
@@ -23,14 +23,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No session token returned' }, { status: 500 });
   }
 
-  const orgRes = await docaiFetch('/v1/orgs/current', {
-    docaiSessionToken: token,
-  });
-  const orgData = await orgRes.json();
-
-  const encrypted = await encryptDocAISession(token, orgData.id || '');
+  // Encrypt the session token. orgId is populated later via /api/auth/session
+  // which calls DocAI's /v1/auth/session (documented to return orgId).
+  const encrypted = await encryptDocAISession(token, '');
   
-  const response = NextResponse.json({ success: true, orgId: orgData.id });
+  const response = NextResponse.json({ success: true });
   response.headers.set('Set-Cookie', getSessionCookieHeader(encrypted));
   return response;
 }

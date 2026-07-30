@@ -27,7 +27,6 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
   }
 
-  // Extract session cookie from response
   const setCookie = signInRes.headers.get('set-cookie') || '';
   const tokenMatch = setCookie.match(/better-auth\.session_token=([^;]+)/);
   const token = tokenMatch?.[1];
@@ -36,17 +35,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No session token returned' }, { status: 500 });
   }
 
-  // Get org info
-  const orgRes = await docaiFetch('/v1/orgs/current', {
-    docaiSessionToken: token,
-  });
-  const orgData = await orgRes.json();
-  const orgId = orgData.id || '';
-
-  // Encrypt session
-  const encrypted = await encryptDocAISession(token, orgId);
+  // Encrypt session. orgId is populated later via /api/auth/session
+  const encrypted = await encryptDocAISession(token, '');
   
-  const response = NextResponse.json({ success: true, orgId });
+  const response = NextResponse.json({ success: true });
   response.headers.set('Set-Cookie', getSessionCookieHeader(encrypted));
   return response;
 }
