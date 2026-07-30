@@ -3,3 +3,4 @@
 .next
 .hermes
 node_modules
+.env*.local
