@@ -7,6 +7,7 @@ export async function docaiFetch(
     body?: BodyInit | object;
     docaiSessionToken?: string;
     contentType?: string;
+    origin?: string;
   } = {}
 ): Promise<Response> {
   const { method = 'GET', body, docaiSessionToken, contentType } = options;
@@ -16,6 +17,8 @@ export async function docaiFetch(
   if (docaiSessionToken) {
     headers['Cookie'] = `better-auth.session_token=${docaiSessionToken}`;
   }
+  
+  headers['Origin'] = options.origin || 'http://localhost:3000';
   
   if (body && typeof body === 'object' && !(body instanceof FormData)) {
     headers['Content-Type'] = contentType || 'application/json';
