@@ -60,6 +60,12 @@
 - Test: `bun run build` succeeded. `bun test` passes (2/2).
 - Notes: Pure TS reconcile function with injectable LLM caller. Full type system, LLM prompt with classification/grouping/severity rules, robust JSON parser. validateReport fixed to validate per-group KPIs (plan had flat structure mismatch).
 
+### [2025-07-30] Task 13 Complete: Reconciliation API route
+
+- Files: Created src/app/api/reconcile/route.ts
+- Test: `bun run build` succeeded, `/api/reconcile` registered as dynamic route.
+- Notes: POST handler fetches segments from DocAI per file, routes LLM to LM Studio or DeepSeek, calls engine. Needs env vars for DeepSeek API key and LM Studio URL in production.
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
