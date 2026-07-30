@@ -54,6 +54,12 @@
 - Test: `bun run build` succeeded.
 - Notes: KB manager with create/delete, file manager with upload/parse/delete/view + job polling, model selector fetches LM Studio models + hardcoded DeepSeek options. Fixed Button `asChild` → `onClick` (shadcn uses @base-ui/react which lacks asChild).
 
+### [2025-07-30] Task 12 Complete: Reconciliation engine (portable, standalone)
+
+- Files: Created src/engine/reconcile.ts, src/engine/__tests__/reconcile.test.ts
+- Test: `bun run build` succeeded. `bun test` passes (2/2).
+- Notes: Pure TS reconcile function with injectable LLM caller. Full type system, LLM prompt with classification/grouping/severity rules, robust JSON parser. validateReport fixed to validate per-group KPIs (plan had flat structure mismatch).
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
