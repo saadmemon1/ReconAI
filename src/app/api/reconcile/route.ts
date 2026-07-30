@@ -61,15 +61,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Determine LLM provider and endpoint
-    // modelId format: "lmstudio/qwen3.6-35b-a3b-ud-mlx" or "lmstudio/qwen/qwen3-vl-30b" or "deepseek/deepseek-chat"
+    // modelId format: "lmstudio/qwen/qwen3-vl-30b" or "deepseek/deepseek-v4-flash"
     const slashIdx = modelId.indexOf('/');
     const provider = slashIdx > 0 ? modelId.slice(0, slashIdx) : 'lmstudio';
-    const modelPath = slashIdx > 0 ? modelId.slice(slashIdx + 1) : modelId;
-    // LM Studio expects just the model filename (last path segment)
-    // DeepSeek expects the model name as-is
-    const modelName = provider === 'deepseek' 
-      ? modelPath 
-      : modelPath.split('/').pop() || modelPath;
+    const modelName = slashIdx > 0 ? modelId.slice(slashIdx + 1) : modelId;
+    // LM Studio expects full path after provider prefix (e.g. qwen/qwen3-vl-30b)
+    // DeepSeek expects the model name as-is (e.g. deepseek-v4-flash)
     
     const llmUrl = provider === 'deepseek'
       ? `${DEEPSEEK_BASE_URL}/chat/completions`
@@ -112,6 +109,10 @@ export async function POST(req: NextRequest) {
     const result = await reconcile(
       { documents, modelId: modelName },
       llmCall
+    );
+
+    console.log('[RECONCILE] Prompt preview:', 
+      documents.map(d => `\n${d.fileName}: ${d.segments.length} segs, ${d.segments.reduce((s: number, seg: any) => s + seg.content.length, 0)} chars`)
     );
 
     return NextResponse.json(result);
