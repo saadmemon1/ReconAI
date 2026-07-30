@@ -41,3 +41,9 @@
 - Files: Created src/app/api/docai/[...path]/route.ts
 - Test: `bun run build` succeeded, route `/api/docai/[...path]` registered as dynamic.
 - Notes: Handles GET/POST/DELETE/PATCH, forwards query params, multipart, JSON, raw bodies. Session decryption per-request.
+
+### [2025-07-30] Task 8 Complete: Root layout + session provider
+
+- Files: Modified src/app/layout.tsx, created src/components/auth-provider.tsx
+- Test: `bun run build` succeeded.
+- Notes: AuthProvider wraps children with React context. Provides signIn/signUp/signOut/fetchDocAI. Checks session on mount. Loading/auth state managed in context.
