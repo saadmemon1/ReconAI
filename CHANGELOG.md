@@ -72,6 +72,12 @@
 - Test: `bun run build` succeeded.
 - Notes: Dashboard now has full layout: header with credits + signout, KB manager section, Files/Reconcile tabs. Reconcile tab shows file checkbox list + model selector + reconcile button. Report saved to localStorage. ReportViewer is stub — full UI in Task 15.
 
+### [2025-07-30] Task 15 Complete: Report viewer (full UI)
+
+- Files: Replaced src/components/report-viewer.tsx stub with full implementation
+- Test: `bun run build` succeeded.
+- Notes: KPI grid, findings by severity with source citations, per-group line items table, unmatched docs section, summary footer. Uses proper LineItem types from engine.
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
