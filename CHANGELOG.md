@@ -47,3 +47,9 @@
 - Files: Modified src/app/layout.tsx, created src/components/auth-provider.tsx
 - Test: `bun run build` succeeded.
 - Notes: AuthProvider wraps children with React context. Provides signIn/signUp/signOut/fetchDocAI. Checks session on mount. Loading/auth state managed in context.
+
+### [2025-07-30] Task 9 Complete: Auth form component
+
+- Files: Created src/components/auth-form.tsx
+- Test: `bun run build` succeeded.
+- Notes: Sign-in/sign-up toggle form. Uses shadcn/ui Button, Input, Card, Label. Calls useAuth().signIn/signUp. Handles loading and error states.
