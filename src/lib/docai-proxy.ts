@@ -1,4 +1,4 @@
-const DOCAI_BASE_URL = process.env.DOCAI_BASE_URL || 'https://your-ngrok-subdomain.ngrok-free.dev';
+const DOCAI_BASE_URL = process.env.DOCAI_BASE_URL!;
 
 export async function docaiFetch(
   path: string,

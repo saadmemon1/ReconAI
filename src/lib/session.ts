@@ -1,7 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 
 const SESSION_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET || 'dev-secret-change-me-min-32-chars!!'
+  process.env.SESSION_SECRET!
 );
 
 const COOKIE_NAME = 'reconai-session';

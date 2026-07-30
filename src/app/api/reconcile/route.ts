@@ -3,8 +3,8 @@ import { decryptDocAISession, COOKIE_NAME } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
 import { reconcile, ReconciliationDocument } from '@/engine/reconcile';
 
-const LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://your-lm-studio-host:1234';
-const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
+const LM_STUDIO_URL = process.env.LM_STUDIO_URL!;
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY!;
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
 
 export async function POST(req: NextRequest) {
