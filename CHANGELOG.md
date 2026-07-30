@@ -84,6 +84,12 @@
 - Test: `bun run build` (Environments: .env.local), `bun test` (2/2).
 - Notes: DOCAI_BASE_URL, LM_STUDIO_URL, DEEPSEEK_API_KEY (empty — fill from platform.deepseek.com), SESSION_SECRET (generated). .env*.local added to gitignore. All 16 tasks complete.
 
+### [2025-07-30] Cleanup: Removed all hardcoded URLs/keys
+
+- Files: Modified session.ts, docai-proxy.ts, reconcile/route.ts
+- Test: `bun run build` (Environments: .env.local) succeeded.
+- Notes: No more dev fallbacks for SESSION_SECRET, DOCAI_BASE_URL, LM_STUDIO_URL, DEEPSEEK_API_KEY. All values must come from .env.local.
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
