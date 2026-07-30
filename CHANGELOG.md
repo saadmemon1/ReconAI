@@ -42,6 +42,12 @@
 - Test: `bun run build` succeeded.
 - Notes: Removed `/v1/orgs/current` calls. orgId now comes from DocAI's `/v1/auth/session` (documented: returns `{orgId}`). Avoids guessing response field names from the opaque `/v1/orgs/current` schema.
 
+### [2025-07-30] Fix: Proper session response parsing
+
+- Files: Modified session/route.ts, auth-provider.tsx, docai skill + api-endpoints reference
+- Test: `bun run build` succeeded.
+- Notes: DocAI session response is `{ session: { currentOrgId, currentKnowledgeBaseId, user, ... } }` — not flat. Session route now extracts nested fields. AuthProvider calls checkSession() after signIn/signUp to populate orgId + KB info. Full response shape documented in docai skill.
+
 ### [2025-07-30] Task 6 Complete: Auth API routes
 
 - Files: Created src/app/api/auth/signup/route.ts, signin/route.ts, signout/route.ts, session/route.ts
