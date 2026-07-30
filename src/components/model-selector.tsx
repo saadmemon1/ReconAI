@@ -31,11 +31,11 @@ export function ModelSelector({
       .then(d => {
         const models = (d.models || []).map((m: any) => ({
           ...m,
-          id: `${m.provider}/${m.id || m.name}`,
+          id: m.id, // API already returns full id with provider prefix
         }));
         setLmStudioModels(models);
         if (d.default_model_id && !value) {
-          onChange(`lmstudio/${d.default_model_id}`);
+          onChange(d.default_model_id);
         }
       })
       .catch(() => {});
