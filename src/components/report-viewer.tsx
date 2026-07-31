@@ -1,6 +1,34 @@
 'use client';
 import { ReconciliationReport, Finding, LineItem } from '@/engine/reconcile';
 import { Card } from './ui/card';
+import {
+  matchRateTone,
+  overbillingTone,
+  unsupportedChargesTone,
+  invoiceVsPODiff,
+  invoiceVsPOTone,
+  totalIssuesTone,
+  Tone,
+} from '@/lib/kpi-utils';
+
+function formatCurrency(currency: string): string {
+  // Use the currency code itself (PKR, USD) — auto-detected by the LLM
+  return `${currency} `;
+}
+
+function severityBreakdown(findings: Finding[]): string {
+  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const f of findings) {
+    if (f.severity in counts) counts[f.severity as keyof typeof counts]++;
+  }
+  const parts = [
+    counts.critical > 0 ? `${counts.critical} critical` : '',
+    counts.high > 0 ? `${counts.high} high` : '',
+    counts.medium > 0 ? `${counts.medium} medium` : '',
+    counts.low > 0 ? `${counts.low} low` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'No issues';
+}
 
 const severityColors: Record<string, string> = {
   critical: 'text-destructive',
@@ -45,20 +73,26 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
   const totalItems = aggKPIs.matchedLineItems + aggKPIs.mismatchedLineItems;
   const matchRate = totalItems > 0 ? (aggKPIs.matchedLineItems / totalItems * 100) : 0;
 
+  const totalIssues = sortedFindings.length;
+  const invVsPoDiff = invoiceVsPODiff(aggKPIs.totalInvoice, aggKPIs.totalPO);
+  const currency = report.currency || 'USD';
+
+  const formatMoney = (n: number) => `${formatCurrency(currency)}${n.toFixed(2)}`;
+
   return (
     <div className="space-y-8">
-      {/* Aggregated KPIs */}
+      {/* Core KPIs */}
       <Card className="p-6">
-        <h3 className="text-h3 mb-4">Key Performance Indicators</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <KPIBox label="Match Rate" value={`${matchRate.toFixed(1)}%`} />
-          <KPIBox label="Matched Items" value={aggKPIs.matchedLineItems} />
-          <KPIBox label="Mismatches" value={aggKPIs.mismatchedLineItems} />
-          <KPIBox label="Overbilling" value={`$${aggKPIs.overbillingAmount.toFixed(2)}`} />
-          <KPIBox label="Total PO" value={`$${aggKPIs.totalPO.toFixed(2)}`} />
-          <KPIBox label="Total Receipt" value={`$${aggKPIs.totalReceipt.toFixed(2)}`} />
-          <KPIBox label="Total Invoice" value={`$${aggKPIs.totalInvoice.toFixed(2)}`} />
-          <KPIBox label="Unsupported Charges" value={`$${aggKPIs.unsupportedCharges.toFixed(2)}`} />
+        <h3 className="text-h3 mb-4">Key Results</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <KPIBox label="Match Rate" value={`${matchRate.toFixed(1)}%`} tone={matchRateTone(matchRate)} />
+          <KPIBox label="Invoice vs PO" 
+            value={invVsPoDiff === null ? '—' : `${invVsPoDiff > 0 ? '+' : ''}${invVsPoDiff.toFixed(1)}%`}
+            sub={invVsPoDiff === null ? 'No PO amount' : undefined}
+            tone={invoiceVsPOTone(invVsPoDiff)} />
+          <KPIBox label="Overbilling" value={formatMoney(aggKPIs.overbillingAmount)} tone={overbillingTone(aggKPIs.overbillingAmount)} />
+          <KPIBox label="Unsupported Charges" value={formatMoney(aggKPIs.unsupportedCharges)} tone={unsupportedChargesTone(aggKPIs.unsupportedCharges)} />
+          <KPIBox label="Total Issues" value={totalIssues} sub={severityBreakdown(sortedFindings)} tone={totalIssuesTone(criticalCount, highCount)} />
         </div>
       </Card>
 
@@ -147,11 +181,23 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
   );
 }
 
-function KPIBox({ label, value }: { label: string; value: string | number }) {
+function KPIBox({ label, value, sub, tone }: { 
+  label: string; 
+  value: string | number; 
+  sub?: string;
+  tone?: Tone 
+}) {
+  const toneClasses: Record<Tone, string> = {
+    good: 'text-success',
+    warn: 'text-warning',
+    bad: 'text-destructive',
+    neutral: '',
+  };
   return (
-    <div className="bg-muted rounded-lg p-3">
+    <div className="bg-muted rounded-lg p-3 border border-border">
       <p className="text-xs text-secondary mb-1">{label}</p>
-      <p className="text-h2 font-mono">{value}</p>
+      <p className={`text-h2 font-mono ${tone ? toneClasses[tone] : ''}`}>{value}</p>
+      {sub && <p className="text-xs text-secondary mt-1">{sub}</p>}
     </div>
   );
 }

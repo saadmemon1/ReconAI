@@ -89,6 +89,7 @@ export interface ReconciliationReport {
   summary: string;
   modelUsed: string;
   timestamp: string;
+  currency?: string;
 }
 
 export interface ReconciliationResult {
