@@ -2,32 +2,15 @@
 import { ReconciliationReport, Finding, LineItem } from '@/engine/reconcile';
 import { Card } from './ui/card';
 import {
-  matchRateTone,
   overbillingTone,
-  unsupportedChargesTone,
-  invoiceVsPODiff,
-  invoiceVsPOTone,
-  totalIssuesTone,
+  recommendedPayable,
+  overbilledPercent,
   Tone,
 } from '@/lib/kpi-utils';
 
 function formatCurrency(currency: string): string {
   // Use the currency code itself (PKR, USD) — auto-detected by the LLM
   return `${currency} `;
-}
-
-function severityBreakdown(findings: Finding[]): string {
-  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
-  for (const f of findings) {
-    if (f.severity in counts) counts[f.severity as keyof typeof counts]++;
-  }
-  const parts = [
-    counts.critical > 0 ? `${counts.critical} critical` : '',
-    counts.high > 0 ? `${counts.high} high` : '',
-    counts.medium > 0 ? `${counts.medium} medium` : '',
-    counts.low > 0 ? `${counts.low} low` : '',
-  ].filter(Boolean);
-  return parts.length ? parts.join(' · ') : 'No issues';
 }
 
 const severityColors: Record<string, string> = {
@@ -70,29 +53,32 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
     evidenceGaps: acc.evidenceGaps + (g.kpis.evidenceGaps || 0),
   }), { totalPO: 0, totalReceipt: 0, totalInvoice: 0, matchedLineItems: 0, mismatchedLineItems: 0, overbillingAmount: 0, unsupportedCharges: 0, evidenceGaps: 0 });
 
-  const totalItems = aggKPIs.matchedLineItems + aggKPIs.mismatchedLineItems;
-  const matchRate = totalItems > 0 ? (aggKPIs.matchedLineItems / totalItems * 100) : 0;
-
-  const totalIssues = sortedFindings.length;
-  const invVsPoDiff = invoiceVsPODiff(aggKPIs.totalInvoice, aggKPIs.totalPO);
+  const totalBilled = aggKPIs.totalInvoice;
+  const totalOverbilled = aggKPIs.overbillingAmount + aggKPIs.unsupportedCharges;
+  const payable = recommendedPayable(totalBilled, aggKPIs.overbillingAmount, aggKPIs.unsupportedCharges);
+  const obPercent = overbilledPercent(totalOverbilled, totalBilled);
   const currency = report.currency || 'USD';
 
-  const formatMoney = (n: number) => `${formatCurrency(currency)}${n.toFixed(2)}`;
+  const formatMoney = (n: number) => `${formatCurrency(currency)}${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
   return (
     <div className="space-y-8">
-      {/* Core KPIs */}
+      {/* Core KPIs: Billed / Payable / Overbilled */}
       <Card className="p-6">
         <h3 className="text-h3 mb-4">Key Results</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <KPIBox label="Match Rate" value={`${matchRate.toFixed(1)}%`} tone={matchRateTone(matchRate)} />
-          <KPIBox label="Invoice vs PO" 
-            value={invVsPoDiff === null ? '—' : `${invVsPoDiff > 0 ? '+' : ''}${invVsPoDiff.toFixed(1)}%`}
-            sub={invVsPoDiff === null ? 'No PO amount' : undefined}
-            tone={invoiceVsPOTone(invVsPoDiff)} />
-          <KPIBox label="Overbilling" value={formatMoney(aggKPIs.overbillingAmount)} tone={overbillingTone(aggKPIs.overbillingAmount)} />
-          <KPIBox label="Unsupported Charges" value={formatMoney(aggKPIs.unsupportedCharges)} tone={unsupportedChargesTone(aggKPIs.unsupportedCharges)} />
-          <KPIBox label="Total Issues" value={totalIssues} sub={severityBreakdown(sortedFindings)} tone={totalIssuesTone(criticalCount, highCount)} />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <KPIBox label="Total Billed" value={formatMoney(totalBilled)} tone="neutral" />
+          <KPIBox 
+            label="Recommended Payable" 
+            value={formatMoney(payable)}
+            tone={payable < totalBilled ? 'good' : 'neutral'}
+          />
+          <KPIBox 
+            label="Total Overbilled" 
+            value={formatMoney(totalOverbilled)} 
+            tone={overbillingTone(totalOverbilled)}
+            sub={obPercent === null ? undefined : `${obPercent.toFixed(1)}% of billed`}
+          />
         </div>
       </Card>
 

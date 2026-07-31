@@ -37,3 +37,15 @@ export function totalIssuesTone(critical: number, high: number): Tone {
   if (high > 0) return 'warn';
   return 'good';
 }
+
+/** Recommended payable = billed − overbilling − unsupported charges (never negative) */
+export function recommendedPayable(billed: number, overbilling: number, unsupported: number): number {
+  return Math.max(0, billed - overbilling - unsupported);
+}
+
+/** Overbilling as a percentage of billed. null when billed is 0. */
+export function overbilledPercent(overbilled: number, billed: number): number | null {
+  if (!billed) return null;
+  return (overbilled / billed) * 100;
+}
+

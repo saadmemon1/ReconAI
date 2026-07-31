@@ -6,6 +6,8 @@ import {
   invoiceVsPODiff,
   invoiceVsPOTone,
   totalIssuesTone,
+  recommendedPayable,
+  overbilledPercent,
 } from '../kpi-utils';
 
 describe('matchRateTone', () => {
@@ -47,4 +49,25 @@ describe('totalIssuesTone', () => {
   test('any critical is bad', () => expect(totalIssuesTone(1, 0)).toBe('bad'));
   test('only high is warn', () => expect(totalIssuesTone(0, 2)).toBe('warn'));
   test('none is good', () => expect(totalIssuesTone(0, 0)).toBe('good'));
+});
+
+describe('recommendedPayable', () => {
+  test('subtracts overbilling and unsupported charges', () => {
+    expect(recommendedPayable(1000, 100, 50)).toBe(850);
+  });
+  test('never negative', () => {
+    expect(recommendedPayable(100, 200, 50)).toBe(0);
+  });
+  test('equals billed when no deductions', () => {
+    expect(recommendedPayable(1000, 0, 0)).toBe(1000);
+  });
+});
+
+describe('overbilledPercent', () => {
+  test('computes percentage of billed', () => {
+    expect(overbilledPercent(100, 1000)).toBeCloseTo(10);
+  });
+  test('null when billed is 0', () => {
+    expect(overbilledPercent(50, 0)).toBeNull();
+  });
 });

@@ -212,11 +212,16 @@ Return ONLY valid JSON in this EXACT structure (no markdown, no explanation outs
     }
   ],
   "unmatchedDocuments": [],
-  "summary": "Single PO matched with its receipt and invoice. One price discrepancy found."
+  "summary": "Single PO matched with its receipt and invoice. One price discrepancy found.",
+  "currency": "PKR"
 }
 \`\`\`
 
 IMPORTANT: Use EXACTLY these field names. For lineItems, MERGE matching items across documents by description — do NOT create separate rows per document. Cross-reference PO quantities, receipt quantities, and invoice quantities into single rows. Always include poQuantity, poUnitPrice, poTotal, receiptQuantity, invoiceQuantity, invoiceUnitPrice, invoiceTotal, and status for every line item.
+
+The "currency" field MUST be the ISO currency code detected from the documents (e.g. PKR, USD, EUR). Detect it from currency symbols or codes in the document text. Never invent one.
+
+The "summary" MUST include: (1) how many documents were grouped, (2) the key discrepancies found, and (3) the derivation of the recommended payable: state the billed total, the total overbilled (overbilling + unsupported charges), and the resulting recommended payable (billed − overbilled). Show the calculation explicitly with numbers, e.g. "Billed PKR 8,874 − Overbilled PKR 1,674 = Recommended payable PKR 7,200".
 `;
 }
 
