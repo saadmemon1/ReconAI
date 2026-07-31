@@ -132,7 +132,7 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
       {/* Summary */}
       <Card className="p-6">
         <h3 className="text-h3 mb-4">Summary</h3>
-        <p className="text-sm whitespace-pre-wrap">{summary}</p>
+        <p className="text-base leading-relaxed whitespace-pre-wrap">{summary}</p>
         <div className="text-xs text-secondary mt-4 space-y-1">
           <p>
             Classification: {documentClassifications.map(c => (
@@ -201,17 +201,17 @@ function FindingCard({ finding }: { finding: Finding }) {
         </div>
         <span className="text-xs text-secondary font-mono">{finding.id}</span>
       </div>
-      <p className="text-sm mb-2">{finding.description}</p>
+      <p className="text-base leading-relaxed mb-2">{finding.description}</p>
       {finding.expected && finding.actual && (
-        <div className="text-xs text-secondary mb-2">
+        <div className="text-sm text-secondary mb-2">
           Expected: {finding.expected} → Actual: {finding.actual}
         </div>
       )}
       {finding.sourceCitations.length > 0 && (
         <div className="mt-2">
-          <p className="text-xs font-medium text-secondary mb-1">Source Evidence:</p>
+          <p className="text-sm font-medium text-secondary mb-1">Source Evidence:</p>
           {finding.sourceCitations.map((cite, i) => (
-            <blockquote key={i} className="text-xs text-secondary border-l-2 border-border pl-2 mb-1 italic">
+            <blockquote key={i} className="text-sm text-secondary border-l-2 border-border pl-2 mb-1 italic">
               {cite}
             </blockquote>
           ))}
