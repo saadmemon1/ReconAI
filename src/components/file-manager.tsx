@@ -4,6 +4,24 @@ import { useAuth } from './auth-provider';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
+import { Input } from './ui/input';
+import { Label } from './ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from './ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog';
+import { resolveUploadTarget, Workspace } from '@/lib/workspace-utils';
 
 interface FileItem {
   id: string;
@@ -13,7 +31,10 @@ interface FileItem {
 
 const PARSED_KEY = 'reconai-parsed-files';
 
-export function FileManager({ kbId }: { kbId: string }) {
+export function FileManager({ kbId, onWorkspacesChanged }: { 
+  kbId: string; 
+  onWorkspacesChanged?: () => void 
+}) {
   const { fetchDocAI } = useAuth();
   const [files, setFiles] = useState<FileItem[]>([]);
   const [parsing, setParsing] = useState<string[]>([]);
@@ -21,6 +42,14 @@ export function FileManager({ kbId }: { kbId: string }) {
   const [uploading, setUploading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Upload dialog state
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'existing' | 'new'>('existing');
+  const [uploadWorkspaceId, setUploadWorkspaceId] = useState<string>(kbId);
+  const [uploadNewName, setUploadNewName] = useState('');
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
 
   const [parsedIds, setParsedIds] = useState<Set<string>>(new Set());
   
@@ -48,6 +77,20 @@ export function FileManager({ kbId }: { kbId: string }) {
 
   useEffect(() => { loadFiles(); }, [kbId]);
 
+  // Load workspaces when upload dialog opens
+  const openUploadDialog = async () => {
+    try {
+      const res = await fetchDocAI('/knowledge-bases');
+      const data = await res.json();
+      setWorkspaces(data.knowledge_bases || data.items || []);
+    } catch {}
+    setUploadWorkspaceId(kbId);
+    setUploadMode('existing');
+    setUploadNewName('');
+    setUploadFiles([]);
+    setUploadOpen(true);
+  };
+
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -64,21 +107,46 @@ export function FileManager({ kbId }: { kbId: string }) {
     }
   };
 
-  const uploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const doUpload = async () => {
+    if (uploadFiles.length === 0) return;
     setUploading(true);
-    
-    for (const file of Array.from(files)) {
+
+    // Decide target workspace
+    const target = resolveUploadTarget(workspaces, uploadMode, uploadWorkspaceId, uploadNewName);
+    if (!target.name) {
+      setUploading(false);
+      return;
+    }
+
+    let targetId = target.id;
+    // Create workspace if new mode
+    if (!targetId) {
+      const createRes = await fetchDocAI('/knowledge-bases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: target.name }),
+      });
+      const createData = await createRes.json();
+      targetId = createData.id || createData.knowledge_base?.id;
+      if (!targetId) {
+        setUploading(false);
+        return;
+      }
+      onWorkspacesChanged?.();
+    }
+
+    // Upload files
+    for (const file of uploadFiles) {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('knowledge_base_id', kbId);
+      formData.append('knowledge_base_id', targetId);
       formData.append('filename', file.name);
       await fetchDocAI('/files', { method: 'POST', body: formData });
     }
-    
+
     setUploading(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    setUploadOpen(false);
+    setUploadFiles([]);
     loadFiles();
   };
 
@@ -155,16 +223,8 @@ export function FileManager({ kbId }: { kbId: string }) {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-h3">Files</h2>
         <div className="flex gap-2">
-          <input 
-            ref={fileInputRef}
-            type="file" 
-            multiple
-            onChange={uploadFile} 
-            className="hidden" 
-            id="file-upload"
-          />
-          <Button variant="secondary" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
-            {uploading ? 'Uploading...' : 'Upload File'}
+          <Button variant="secondary" disabled={uploading} onClick={openUploadDialog}>
+            Upload File
           </Button>
         </div>
       </div>
@@ -187,7 +247,6 @@ export function FileManager({ kbId }: { kbId: string }) {
         <p className="text-sm text-secondary">No files in this workspace. Upload a file to begin.</p>
       ) : (
         <div className="space-y-2">
-          {/* Select all */}
           <label className="flex items-center gap-3 p-2 text-sm text-secondary cursor-pointer hover:text-foreground">
             <input
               type="checkbox"
@@ -253,6 +312,88 @@ export function FileManager({ kbId }: { kbId: string }) {
           )})}
         </div>
       )}
+
+      {/* Upload dialog: ask existing workspace or create new */}
+      <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload Files</DialogTitle>
+            <DialogDescription>
+              Choose where to upload: an existing workspace or a new one.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex gap-2 mb-3">
+            <Button 
+              variant={uploadMode === 'existing' ? 'default' : 'ghost'} 
+              size="sm"
+              onClick={() => setUploadMode('existing')}
+            >
+              Existing Workspace
+            </Button>
+            <Button 
+              variant={uploadMode === 'new' ? 'default' : 'ghost'} 
+              size="sm"
+              onClick={() => setUploadMode('new')}
+            >
+              New Workspace
+            </Button>
+          </div>
+
+          {uploadMode === 'existing' ? (
+            <div className="space-y-3">
+              <Label>Workspace</Label>
+              <Select value={uploadWorkspaceId} onValueChange={v => v && setUploadWorkspaceId(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {workspaces.find(w => w.id === uploadWorkspaceId)?.name || 'Select a workspace'}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {workspaces.length === 0 && (
+                    <p className="px-3 py-2 text-sm text-secondary">No workspaces yet. Create one.</p>
+                  )}
+                  {workspaces.map(w => (
+                    <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Label>New Workspace Name</Label>
+              <Input 
+                placeholder="Workspace name" 
+                value={uploadNewName} 
+                onChange={e => setUploadNewName(e.target.value)} 
+              />
+            </div>
+          )}
+
+          <div className="space-y-3 pt-2">
+            <Label>Files</Label>
+            <input
+              type="file"
+              multiple
+              onChange={e => setUploadFiles(Array.from(e.target.files || []))}
+              className="block w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium file:text-foreground"
+            />
+            {uploadFiles.length > 0 && (
+              <p className="text-xs text-secondary">{uploadFiles.length} file(s) selected</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setUploadOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={doUpload} 
+              disabled={uploading || uploadFiles.length === 0 || (uploadMode === 'new' && !uploadNewName.trim())}
+            >
+              {uploading ? 'Uploading...' : 'Upload'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

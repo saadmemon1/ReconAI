@@ -13,6 +13,7 @@ export function Dashboard() {
   const { signOut } = useAuth();
   const [tab, setTab] = useState<Tab>('files');
   const [selectedKB, setSelectedKB] = useState<string | null>(null);
+  const [wsRefreshKey, setWsRefreshKey] = useState(0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -27,9 +28,13 @@ export function Dashboard() {
 
       {/* Body */}
       <div className="max-w-6xl mx-auto px-8 py-8">
-        {/* KB Selection */}
+        {/* Workspace Selection */}
         <section className="mb-8">
-          <WorkspaceManager selectedKB={selectedKB} onSelect={setSelectedKB} />
+          <WorkspaceManager 
+            key={wsRefreshKey}
+            selectedKB={selectedKB} 
+            onSelect={setSelectedKB} 
+          />
         </section>
 
         {selectedKB && (
@@ -50,7 +55,7 @@ export function Dashboard() {
               </Button>
             </div>
 
-            {tab === 'files' && <FileManager kbId={selectedKB} />}
+            {tab === 'files' && <FileManager kbId={selectedKB} onWorkspacesChanged={() => setWsRefreshKey(k => k + 1)} />}
             {tab === 'reconcile' && <ReconcileRunner kbId={selectedKB} />}
           </>
         )}
