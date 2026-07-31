@@ -97,6 +97,11 @@ export interface ReconciliationResult {
   reconcileDuration: number;
 }
 
+export interface LLMCallResult {
+  content: string;
+  reasoning?: string;
+}
+
 // === Prompt Builder ===
 
 function buildReconciliationPrompt(input: ReconciliationInput): string {
@@ -277,7 +282,7 @@ function validateReport(data: unknown): ReconciliationReport {
 
 export async function reconcile(
   input: ReconciliationInput,
-  llmCall: (prompt: string) => Promise<string>
+  llmCall: (prompt: string) => Promise<string | LLMCallResult>
 ): Promise<ReconciliationResult> {
   const parseStart = Date.now();
   
@@ -293,7 +298,9 @@ export async function reconcile(
   const prompt = buildReconciliationPrompt(input);
   
   // Call LLM
-  const response = await llmCall(prompt);
+  const rawResponse = await llmCall(prompt);
+  const response = typeof rawResponse === 'string' ? rawResponse : rawResponse.content;
+  const reasoning = typeof rawResponse === 'object' ? rawResponse.reasoning : undefined;
   
   // Parse JSON
   const json = extractJSON(response);
@@ -308,6 +315,9 @@ export async function reconcile(
   const report = validateReport(parsed);
   report.modelUsed = input.modelId;
   report.timestamp = new Date().toISOString();
+  if (reasoning) {
+    (report as any).llmReasoning = reasoning;
+  }
   
   const reconcileDuration = Date.now() - reconcileStart;
   

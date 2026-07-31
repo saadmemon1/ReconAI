@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       llmHeaders['Authorization'] = `Bearer ${DEEPSEEK_API_KEY}`;
     }
 
-    const llmCall = async (prompt: string): Promise<string> => {
+    const llmCall = async (prompt: string) => {
       const llmRes = await fetch(llmUrl, {
         method: 'POST',
         headers: llmHeaders,
@@ -98,6 +98,8 @@ export async function POST(req: NextRequest) {
           ],
           temperature: 0.1,
           max_tokens: 16000,
+          // LM Studio reasoning models support reasoning_effort; harmless for others
+          ...(provider === 'lmstudio' ? { reasoning_effort: 'high' } : {}),
         }),
       });
 
@@ -107,7 +109,12 @@ export async function POST(req: NextRequest) {
       }
 
       const llmData = await llmRes.json();
-      return llmData.choices?.[0]?.message?.content || '';
+      const msg = llmData.choices?.[0]?.message;
+      return {
+        content: msg?.content || '',
+        // DeepSeek reasoner returns reasoning_content; LM Studio reasoning models may return reasoning
+        reasoning: msg?.reasoning_content || msg?.reasoning || undefined,
+      };
     };
 
     const result = await reconcile(
