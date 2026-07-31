@@ -184,7 +184,7 @@ export function FileManager({ kbId }: { kbId: string }) {
       )}
 
       {files.length === 0 ? (
-        <p className="text-sm text-secondary">No files in this knowledge base. Upload a file to begin.</p>
+        <p className="text-sm text-secondary">No files in this workspace. Upload a file to begin.</p>
       ) : (
         <div className="space-y-2">
           {/* Select all */}

@@ -1,7 +1,7 @@
 'use client';
 import { useAuth } from './auth-provider';
 import { CreditDisplay } from './credit-display';
-import { KBManager } from './kb-manager';
+import { WorkspaceManager } from './workspace-manager';
 import { FileManager } from './file-manager';
 import { ReconcileRunner } from './reconcile-runner';
 import { Button } from './ui/button';
@@ -29,7 +29,7 @@ export function Dashboard() {
       <div className="max-w-6xl mx-auto px-8 py-8">
         {/* KB Selection */}
         <section className="mb-8">
-          <KBManager selectedKB={selectedKB} onSelect={setSelectedKB} />
+          <WorkspaceManager selectedKB={selectedKB} onSelect={setSelectedKB} />
         </section>
 
         {selectedKB && (

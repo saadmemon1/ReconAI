@@ -11,7 +11,7 @@ interface KB {
   description?: string;
 }
 
-export function KBManager({ selectedKB, onSelect }: { 
+export function WorkspaceManager({ selectedKB, onSelect }: { 
   selectedKB: string | null; 
   onSelect: (id: string | null) => void 
 }) {
@@ -42,7 +42,7 @@ export function KBManager({ selectedKB, onSelect }: {
   };
 
   const deleteKB = async (id: string) => {
-    if (!confirm('Permanently delete this knowledge base and ALL files? This is irreversible.')) return;
+    if (!confirm('Permanently delete this workspace and ALL files? This is irreversible.')) return;
     await fetchDocAI(`/knowledge-bases/${id}?confirm_permanent=true`, { method: 'DELETE' });
     if (selectedKB === id) onSelect(null);
     loadKBs();
@@ -50,10 +50,10 @@ export function KBManager({ selectedKB, onSelect }: {
 
   return (
     <div>
-      <h2 className="text-h3 mb-3">Knowledge Bases</h2>
+      <h2 className="text-h3 mb-3">Workspaces</h2>
       <div className="flex gap-2 mb-4">
         <Input 
-          placeholder="New KB name" value={newName}
+          placeholder="New workspace name" value={newName}
           onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && createKB()}
           className="max-w-xs"
@@ -82,7 +82,7 @@ export function KBManager({ selectedKB, onSelect }: {
           </Card>
         ))}
         {!loading && kbs.length === 0 && (
-          <p className="text-sm text-secondary">No knowledge bases yet. Create one to get started.</p>
+          <p className="text-sm text-secondary">No workspaces yet. Create one to get started.</p>
         )}
       </div>
     </div>
