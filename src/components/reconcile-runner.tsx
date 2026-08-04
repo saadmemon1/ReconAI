@@ -1,75 +1,55 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from './auth-provider';
-import { ModelSelector } from './model-selector';
-import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { ReportViewer } from './report-viewer';
 import { ReconciliationReport } from '@/engine/reconcile';
 import { reportStorageKey, LEGACY_REPORT_KEY } from '@/lib/report-storage';
-import { isFileParsed, FileWithProcessing } from '@/lib/file-status';
+import type { ReconcileRequest } from './dashboard';
 
-interface FileItem extends FileWithProcessing {
-  id: string;
-  filename: string;
-}
-
-export function ReconcileRunner({ kbId }: { kbId: string }) {
+export function ReconcileRunner({ kbId, reconcileRequest }: {
+  kbId: string;
+  reconcileRequest: ReconcileRequest | null;
+}) {
   const { fetchDocAI } = useAuth();
-  const [files, setFiles] = useState<FileItem[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [modelId, setModelId] = useState('');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
-  const [report, setReport] = useState<ReconciliationReport | null>(null);
-  const [thinking, setThinking] = useState<string[]>([]);
-  const [thinkingOpen, setThinkingOpen] = useState(false);
-  const thinkingRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Workspace switch: the component is remounted via key={kbId} in the
-    // dashboard, which resets report + file selection naturally.
-
-    // Only show parsed files in Reconcile tab (server-side status
-    // from ?include=processing → processing.latest_parse_job.status === 'completed')
-    fetchDocAI(`/files?kb_id=${kbId}&include=processing`)
-      .then(r => r.json())
-      .then(d => {
-        const allFiles: FileItem[] = d.files || d.items || [];
-        setFiles(allFiles.filter(isFileParsed));
-      })
-      .catch(() => {});
-  }, [kbId]);
-
-  useEffect(() => {
+  // Load this workspace's persisted report (with legacy migration).
+  // The runner is remounted per workspace via key={kbId}, so the initializer
+  // runs fresh on every workspace switch — no effect needed.
+  const [report, setReport] = useState<ReconciliationReport | null>(() => {
     try {
-      // Per-workspace report: load this workspace's report (with legacy migration)
       const key = reportStorageKey(kbId);
       let saved = localStorage.getItem(key);
       if (saved === null) {
-        // First run after upgrade: adopt the old global report if present, then drop it
         saved = localStorage.getItem(LEGACY_REPORT_KEY);
         if (saved !== null) {
           localStorage.setItem(key, saved);
           localStorage.removeItem(LEGACY_REPORT_KEY);
         }
       }
-      if (saved) setReport(JSON.parse(saved));
-    } catch {}
-  }, [kbId]);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [thinking, setThinking] = useState<string[]>([]);
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+  const thinkingRef = useRef<HTMLDivElement>(null);
+  const lastNonce = useRef(0);
 
-  const toggle = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
+  // Auto-scroll the live thinking log
+  useEffect(() => {
+    if (thinkingRef.current) {
+      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
+    }
+  }, [thinking]);
 
-  const ready = selectedIds.size >= 2 && modelId;
-
-  const run = async () => {
-    if (!ready) return;
+  const run = async (fileIds: string[]) => {
+    if (fileIds.length < 2) {
+      setError('Need at least 2 parsed documents to reconcile.');
+      return;
+    }
     setRunning(true);
     setError('');
     setReport(null);
@@ -77,18 +57,26 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
     setThinkingOpen(true); // auto-open while streaming
 
     try {
+      // Pick the model: DocAI default if available, else first available LM Studio model, else DeepSeek
+      let modelId = '';
+      try {
+        const modelsRes = await fetchDocAI('/ai/models');
+        const modelsData = await modelsRes.json();
+        const models: Array<{ id: string; available?: boolean }> = modelsData.models || [];
+        modelId = modelsData.default_model_id
+          || models.find(m => m.available)?.id
+          || '';
+      } catch {}
+      if (!modelId) modelId = 'deepseek/deepseek-chat';
+
       const res = await fetch('/api/reconcile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileIds: Array.from(selectedIds),
-          modelId,
-        }),
+        body: JSON.stringify({ fileIds, modelId }),
       });
 
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok) {
-        // Non-streaming error (validation/400): plain JSON
         const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
         throw new Error(err.error || 'Reconciliation failed');
       }
@@ -118,14 +106,14 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
         for (const evt of events) {
           const line = evt.split('\n').find(l => l.startsWith('data: '));
           if (!line) continue;
-          let msg: any;
+          let msg: { type?: string; text?: string; report?: ReconciliationReport; message?: string };
           try {
             msg = JSON.parse(line.slice(6));
           } catch {
             continue;
           }
           if (msg.type === 'thinking' && msg.text) {
-            setThinking(prev => [...prev, msg.text]);
+            setThinking(prev => [...prev, msg.text!]);
           } else if (msg.type === 'report' && msg.report) {
             setReport(msg.report);
             localStorage.setItem(reportStorageKey(kbId), JSON.stringify(msg.report));
@@ -134,68 +122,24 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
           }
         }
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Reconciliation failed');
     } finally {
       setRunning(false);
       setThinkingOpen(false); // collapse when done — report starts at KPIs
     }
   };
 
-  // Auto-scroll the live thinking log
+  // Auto-run when a reconcile request arrives from the Files tab
   useEffect(() => {
-    if (thinkingRef.current) {
-      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
-    }
-  }, [thinking]);
+    if (!reconcileRequest || reconcileRequest.nonce === lastNonce.current) return;
+    lastNonce.current = reconcileRequest.nonce;
+    run(reconcileRequest.fileIds);
+  }, [reconcileRequest]);
 
   return (
     <div>
-      <h2 className="text-h3 mb-4">Reconcile Documents</h2>
-      
-      <Card className="p-6 mb-6">
-        <p className="text-sm text-secondary mb-4">
-          Select documents to reconcile. The AI will classify each document (PO/Receipt/Invoice) and group related ones automatically.
-        </p>
-        
-        <div className="space-y-2 mb-6 max-h-64 overflow-y-auto">
-          {files.length === 0 ? (
-            <p className="text-sm text-secondary">No files parsed yet. Upload and parse files first.</p>
-          ) : (
-            files.map(f => (
-              <label 
-                key={f.id}
-                className="flex items-center gap-3 p-2 rounded-md hover:bg-muted cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(f.id)}
-                  onChange={() => toggle(f.id)}
-                  className="w-4 h-4 rounded border-border cursor-pointer"
-                />
-                <span className="text-sm">{f.filename}</span>
-              </label>
-            ))
-          )}
-        </div>
-
-        <div className="flex items-end gap-4">
-          <div>
-            <label className="text-sm font-medium block mb-2">AI Model</label>
-            <ModelSelector value={modelId} onChange={setModelId} />
-          </div>
-          <Button 
-            onClick={run} 
-            disabled={!ready || running}
-          >
-            {running ? 'Reconciling...' : `Reconcile ${selectedIds.size} Documents`}
-          </Button>
-        </div>
-
-        {error && (
-          <p className="text-sm text-destructive mt-4">{error}</p>
-        )}
-      </Card>
+      <h2 className="text-h3 mb-4">Report</h2>
 
       {/* Live LLM thinking log (streamed during reconciliation) */}
       {(running || thinking.length > 0) && (
@@ -220,7 +164,24 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
         </details>
       )}
 
-      {report && <ReportViewer report={report} />}
+      {error && (
+        <Card className="p-6 mb-6">
+          <p className="text-sm text-destructive">{error}</p>
+        </Card>
+      )}
+
+      {report ? (
+        <ReportViewer report={report} />
+      ) : (
+        !running && !error && (
+          <Card className="p-6">
+            <p className="text-sm text-secondary">
+              No report yet. Select 2+ parsed files in the Files tab and click{" "}
+              <strong>Reconcile N Documents</strong> to generate a report here.
+            </p>
+          </Card>
+        )
+      )}
     </div>
   );
 }

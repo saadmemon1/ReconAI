@@ -41,9 +41,10 @@ function isAcceptedFile(file: File): boolean {
   return ACCEPTED_TYPES.has(file.type);
 }
 
-export function FileManager({ kbId, onWorkspacesChanged }: { 
+export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: { 
   kbId: string; 
-  onWorkspacesChanged?: () => void 
+  onWorkspacesChanged?: () => void;
+  onReconcile?: (fileIds: string[]) => void;
 }) {
   const { fetchDocAI } = useAuth();
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -76,6 +77,8 @@ export function FileManager({ kbId, onWorkspacesChanged }: {
     const res = await fetchDocAI(`/files?kb_id=${kbId}&include=processing`);
     const data = await res.json();
     const fileList: FileItem[] = data.files || data.items || [];
+    // Sort: parsed files at top, non-parsed at bottom
+    fileList.sort((a, b) => Number(isFileParsed(b)) - Number(isFileParsed(a)));
     setFiles(fileList);
     // Sync parsed state from the authoritative server response
     setParsedIds(new Set(fileList.filter(isFileParsed).map(f => f.id)));
@@ -143,18 +146,40 @@ export function FileManager({ kbId, onWorkspacesChanged }: {
     }
 
     // Upload files
+    const uploadedIds: string[] = [];
     for (const file of uploadFiles) {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('knowledge_base_id', targetId);
       formData.append('filename', file.name);
-      await fetchDocAI('/files', { method: 'POST', body: formData });
+      const res = await fetchDocAI('/files', { method: 'POST', body: formData });
+      // Try to capture the new file id from the upload response
+      try {
+        const d = await res.json();
+        const id = d?.id || d?.file?.id || d?.files?.[0]?.id;
+        if (id) uploadedIds.push(id);
+      } catch {}
+    }
+
+    // If any upload response lacked an id, find them by filename in the refreshed list
+    const refreshed = await fetchDocAI(`/files?kb_id=${targetId}&include=processing`).then(r => r.json());
+    const allFiles: FileItem[] = refreshed.files || refreshed.items || [];
+    const byName = new Map(allFiles.map(f => [f.filename, f.id]));
+    for (const file of uploadFiles) {
+      if (byName.has(file.name)) uploadedIds.push(byName.get(file.name)!);
     }
 
     setUploading(false);
     setUploadOpen(false);
     setUploadFiles([]);
-    loadFiles();
+
+    // Auto-parse freshly uploaded files — users upload to reconcile, not to store
+    if (uploadedIds.length > 0) {
+      loadFiles();
+      bulkParse(uploadedIds);
+    } else {
+      loadFiles();
+    }
   };
 
   const deleteFile = async (fileId: string) => {
@@ -237,16 +262,36 @@ export function FileManager({ kbId, onWorkspacesChanged }: {
       </div>
 
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 mb-4 p-3 bg-muted rounded-lg border border-border">
-          <span className="text-sm text-secondary">{selectedIds.size} selected</span>
-          {unparsedSelected > 0 && (
-            <Button variant="secondary" size="sm" onClick={() => bulkParse([...selectedIds])}>
-              Parse {unparsedSelected} Selected
+        <div className="flex items-center justify-between gap-3 mb-4 p-3 bg-muted rounded-lg border border-border">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-secondary">{selectedIds.size} selected</span>
+            {unparsedSelected > 0 && (
+              <Button variant="secondary" size="sm" onClick={() => bulkParse([...selectedIds])}>
+                Parse {unparsedSelected} Selected
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={bulkDelete}>
+              Delete {selectedIds.size} Selected
             </Button>
-          )}
-          <Button variant="ghost" size="sm" className="text-destructive" onClick={bulkDelete}>
-            Delete {selectedIds.size} Selected
-          </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedIds.size >= 2 && (
+              <>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={unparsedSelected > 0}
+                  onClick={() => onReconcile?.([...selectedIds])}
+                  className={unparsedSelected === 0 ? 'bg-success text-white hover:bg-success/80' : ''}
+                >
+                  Reconcile {selectedIds.size} Documents
+                </Button>
+                {unparsedSelected > 0 && (
+                  <span className="text-xs text-secondary">Only parsed files can be reconciled</span>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
 

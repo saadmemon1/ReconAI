@@ -12,12 +12,16 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from './ui/dialog';
 import { LogOut } from 'lucide-react';
 import { useState } from 'react';
 
-type Tab = 'files' | 'reconcile';
+type Tab = 'files' | 'report';
+
+export interface ReconcileRequest {
+  fileIds: string[];
+  nonce: number;
+}
 
 export function Dashboard() {
   const { signOut } = useAuth();
@@ -25,6 +29,12 @@ export function Dashboard() {
   const [selectedKB, setSelectedKB] = useState<string | null>(null);
   const [wsRefreshKey, setWsRefreshKey] = useState(0);
   const [signOutOpen, setSignOutOpen] = useState(false);
+  const [reconcileRequest, setReconcileRequest] = useState<ReconcileRequest | null>(null);
+
+  const handleReconcile = (fileIds: string[]) => {
+    setReconcileRequest({ fileIds, nonce: Date.now() });
+    setTab('report');
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -71,7 +81,10 @@ export function Dashboard() {
           <WorkspaceManager 
             key={wsRefreshKey}
             selectedKB={selectedKB} 
-            onSelect={setSelectedKB} 
+            onSelect={(id) => {
+              setReconcileRequest(null); // workspace switch: don't re-run a stale request
+              setSelectedKB(id);
+            }} 
           />
         </section>
 
@@ -86,16 +99,19 @@ export function Dashboard() {
                 Files
               </Button>
               <Button 
-                variant={tab === 'reconcile' ? 'default' : 'ghost'}
-                onClick={() => setTab('reconcile')}
+                variant={tab === 'report' ? 'default' : 'ghost'}
+                onClick={() => {
+                  setReconcileRequest(null); // manual view: don't re-trigger a run
+                  setTab('report');
+                }}
               >
-                Reconcile
+                Report
               </Button>
             </div>
 
             <div key={tab} className="animate-crossfade">
-              {tab === 'files' && <FileManager kbId={selectedKB} onWorkspacesChanged={() => setWsRefreshKey(k => k + 1)} />}
-              {tab === 'reconcile' && <ReconcileRunner key={selectedKB} kbId={selectedKB} />}
+              {tab === 'files' && <FileManager kbId={selectedKB} onWorkspacesChanged={() => setWsRefreshKey(k => k + 1)} onReconcile={handleReconcile} />}
+              {tab === 'report' && <ReconcileRunner key={selectedKB} kbId={selectedKB} reconcileRequest={reconcileRequest} />}
             </div>
           </>
         )}
