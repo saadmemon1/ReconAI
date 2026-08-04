@@ -86,6 +86,24 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         </div>
       </Card>
 
+      {/* Summary (executive summary, directly under KPIs) */}
+      <Card className="p-6">
+        <h3 className="text-h3 mb-4">Summary</h3>
+        <p className="text-base leading-relaxed whitespace-pre-wrap">{summary}</p>
+        <div className="text-xs text-secondary mt-4 space-y-1">
+          <p>
+            Classification: {documentClassifications.map(c => (
+              <span key={c.document}>
+                Doc {c.document} → <strong className="capitalize">{c.type.replace(/_/g, ' ')}</strong>
+                {c !== documentClassifications[documentClassifications.length - 1] ? ' · ' : ''}
+              </span>
+            ))}
+          </p>
+          <p>Model: {report.modelUsed}</p>
+          <p>Generated: {new Date(timestamp).toLocaleString()}</p>
+        </div>
+      </Card>
+
       {/* Findings Summary */}
       <Card className="p-6">
         <h3 className="text-h3 mb-4">Findings by Severity</h3>
@@ -136,24 +154,6 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
           </ul>
         </Card>
       )}
-
-      {/* Summary */}
-      <Card className="p-6">
-        <h3 className="text-h3 mb-4">Summary</h3>
-        <p className="text-base leading-relaxed whitespace-pre-wrap">{summary}</p>
-        <div className="text-xs text-secondary mt-4 space-y-1">
-          <p>
-            Classification: {documentClassifications.map(c => (
-              <span key={c.document}>
-                Doc {c.document} → <strong className="capitalize">{c.type.replace(/_/g, ' ')}</strong>
-                {c !== documentClassifications[documentClassifications.length - 1] ? ' · ' : ''}
-              </span>
-            ))}
-          </p>
-          <p>Model: {report.modelUsed}</p>
-          <p>Generated: {new Date(timestamp).toLocaleString()}</p>
-        </div>
-      </Card>
 
       {/* LLM Reasoning (collapsible) */}
       {(report as any).llmReasoning && (

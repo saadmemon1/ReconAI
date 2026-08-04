@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from './auth-provider';
 import { ModelSelector } from './model-selector';
 import { Button } from './ui/button';
@@ -22,6 +22,8 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const [report, setReport] = useState<ReconciliationReport | null>(null);
+  const [thinking, setThinking] = useState<string[]>([]);
+  const thinkingRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Workspace switch: the component is remounted via key={kbId} in the
@@ -69,6 +71,8 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
     if (!ready) return;
     setRunning(true);
     setError('');
+    setReport(null);
+    setThinking([]);
 
     try {
       const res = await fetch('/api/reconcile', {
@@ -80,21 +84,67 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
         }),
       });
 
+      const contentType = res.headers.get('content-type') || '';
       if (!res.ok) {
-        const err = await res.json();
+        // Non-streaming error (validation/400): plain JSON
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
         throw new Error(err.error || 'Reconciliation failed');
       }
 
-      const data = await res.json();
-      const r = data.report;
-      setReport(r);
-      localStorage.setItem(reportStorageKey(kbId), JSON.stringify(r));
+      if (!contentType.includes('text/event-stream')) {
+        // Legacy path: plain JSON response
+        const data = await res.json();
+        const r = data.report;
+        if (!r) throw new Error('Reconciliation returned no report');
+        setReport(r);
+        localStorage.setItem(reportStorageKey(kbId), JSON.stringify(r));
+        return;
+      }
+
+      // SSE stream: live LLM thinking logs, then the final report
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const evt of events) {
+          const line = evt.split('\n').find(l => l.startsWith('data: '));
+          if (!line) continue;
+          let msg: any;
+          try {
+            msg = JSON.parse(line.slice(6));
+          } catch {
+            continue;
+          }
+          if (msg.type === 'thinking' && msg.text) {
+            setThinking(prev => [...prev, msg.text]);
+          } else if (msg.type === 'report' && msg.report) {
+            setReport(msg.report);
+            localStorage.setItem(reportStorageKey(kbId), JSON.stringify(msg.report));
+          } else if (msg.type === 'error') {
+            throw new Error(msg.message || 'Reconciliation failed');
+          }
+        }
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setRunning(false);
     }
   };
+
+  // Auto-scroll the live thinking log
+  useEffect(() => {
+    if (thinkingRef.current) {
+      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
+    }
+  }, [thinking]);
 
   return (
     <div>
@@ -143,6 +193,26 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
           <p className="text-sm text-destructive mt-4">{error}</p>
         )}
       </Card>
+
+      {/* Live LLM thinking log (streamed during reconciliation) */}
+      {(running || thinking.length > 0) && (
+        <Card className="p-6">
+          <h3 className="text-h3 mb-2 flex items-center gap-2">
+            LLM Thinking
+            {running && <span className="text-xs text-secondary font-normal animate-pulse">streaming…</span>}
+          </h3>
+          <div
+            ref={thinkingRef}
+            className="bg-muted/50 rounded-lg p-4 max-h-72 overflow-y-auto font-mono text-xs text-secondary leading-relaxed whitespace-pre-wrap"
+          >
+            {thinking.length === 0 ? (
+              <span className="italic">Waiting for model output…</span>
+            ) : (
+              thinking.map((chunk, i) => <span key={i}>{chunk}</span>)
+            )}
+          </div>
+        </Card>
+      )}
 
       {report && <ReportViewer report={report} />}
     </div>

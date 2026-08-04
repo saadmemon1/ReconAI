@@ -173,6 +173,16 @@ You MUST:
 - **medium**: Discrepancies between ${tolerance / 2}% and ${tolerance}%
 - **low**: Minor formatting, rounding < ${tolerance / 2}%, or informational
 
+### Deduplication (IMPORTANT)
+Report each underlying discrepancy EXACTLY ONCE. The same root cause viewed from
+different document pairs (e.g. "invoice bills 16 vs GRN received 12" and "PO
+ordered 16, GRN received 12, invoice bills 16") is ONE finding, not two. If two
+candidate findings have the same expected/actual quantities and the same
+documents, MERGE them into a single finding: use the most severe applicable
+severity, cite evidence from ALL involved documents, and describe the
+discrepancy across all documents in one place. Do not create separate findings
+per document pair for the same issue.
+
 ### Source Citations
 For EVERY finding, include EXACT quotes from the document text as evidence. Format as: "doc_name: line X: 'quoted text'"
 
