@@ -81,3 +81,60 @@ label {
 .ring-offset-background {
   --tw-ring-offset-width: 2px;
 }
+
+/* === Premium Animations === */
+
+/* Entrance: fade + slide up (cards, findings, sections) */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Entrance: scale in (KPI boxes) */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Crossfade: tab content switch */
+@keyframes crossfade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 180ms ease-out both;
+}
+
+.animate-scale-in {
+  animation: scale-in 180ms ease-out both;
+}
+
+.animate-crossfade {
+  animation: crossfade 150ms ease-out both;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-scale-in,
+  .animate-crossfade {
+    animation: none;
+  }
+}

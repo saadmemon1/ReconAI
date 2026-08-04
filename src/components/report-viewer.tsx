@@ -67,18 +67,22 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
       <Card className="p-6">
         <h3 className="text-h3 mb-4">Key Results</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <KPIBox label="Total Billed" value={formatMoney(totalBilled)} tone="neutral" />
-          <KPIBox 
-            label="Recommended Payable" 
-            value={formatMoney(payable)}
-            tone={payable < totalBilled ? 'good' : 'neutral'}
-          />
-          <KPIBox 
-            label="Total Overbilled" 
-            value={formatMoney(totalOverbilled)} 
-            tone={overbillingTone(totalOverbilled)}
-            sub={obPercent === null ? undefined : `${obPercent.toFixed(1)}% of billed`}
-          />
+          <div className="animate-scale-in"><KPIBox label="Total Billed" value={formatMoney(totalBilled)} tone="neutral" /></div>
+          <div className="animate-scale-in" style={{ animationDelay: '60ms' }}>
+            <KPIBox 
+              label="Recommended Payable" 
+              value={formatMoney(payable)}
+              tone={payable < totalBilled ? 'good' : 'neutral'}
+            />
+          </div>
+          <div className="animate-scale-in" style={{ animationDelay: '120ms' }}>
+            <KPIBox 
+              label="Total Overbilled" 
+              value={formatMoney(totalOverbilled)} 
+              tone={overbillingTone(totalOverbilled)}
+              sub={obPercent === null ? undefined : `${obPercent.toFixed(1)}% of billed`}
+            />
+          </div>
         </div>
       </Card>
 
@@ -93,15 +97,18 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         </div>
 
         <div className="space-y-3">
-          {sortedFindings.map(f => (
-            <FindingCard key={f.id} finding={f} />
+          {sortedFindings.map((f, i) => (
+            <div key={f.id} className="animate-fade-up" style={{ animationDelay: `${i * 40}ms` }}>
+              <FindingCard finding={f} />
+            </div>
           ))}
         </div>
       </Card>
 
       {/* Per-Group Line Items */}
-      {groups.map(group => (
-        <Card key={group.id} className="p-6">
+      {groups.map((group, gi) => (
+        <div key={group.id} className="animate-fade-up" style={{ animationDelay: `${gi * 60}ms` }}>
+          <Card className="p-6">
           <h3 className="text-h3 mb-1">{group.description}</h3>
           <p className="text-xs text-secondary mb-4">
             {group.documents.map(d => {
@@ -110,7 +117,8 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
             }).join(' · ')}
           </p>
           <LineItemsTable lineItems={group.lineItems} />
-        </Card>
+          </Card>
+        </div>
       ))}
 
       {/* Unmatched */}

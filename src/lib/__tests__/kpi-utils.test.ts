@@ -8,6 +8,7 @@ import {
   totalIssuesTone,
   recommendedPayable,
   overbilledPercent,
+  sanitizeKPIs,
 } from '../kpi-utils';
 
 describe('matchRateTone', () => {
@@ -69,5 +70,38 @@ describe('overbilledPercent', () => {
   });
   test('null when billed is 0', () => {
     expect(overbilledPercent(50, 0)).toBeNull();
+  });
+});
+
+describe('sanitizeKPIs (F4: KPI integrity)', () => {
+  test('coerces strings and fills missing with 0', () => {
+    const out = sanitizeKPIs({ totalInvoice: '1000', totalPO: undefined });
+    expect(out.totalInvoice).toBe(1000);
+    expect(out.totalPO).toBe(0);
+  });
+
+  test('preserves negative numbers exactly (credit notes, discounts, refunds)', () => {
+    const out = sanitizeKPIs({ totalInvoice: -500, overbillingAmount: -5000, matchRate: -20 });
+    expect(out.totalInvoice).toBe(-500);
+    expect(out.overbillingAmount).toBe(-5000);
+    expect(out.matchRate).toBe(-20);
+  });
+
+  test('does not clamp oversized values (no tampering)', () => {
+    const out = sanitizeKPIs({ totalInvoice: 1000, overbillingAmount: 5000, matchRate: 150 });
+    expect(out.overbillingAmount).toBe(5000);
+    expect(out.matchRate).toBe(150);
+  });
+
+  test('preserves fractional counts', () => {
+    const out = sanitizeKPIs({ matchedLineItems: 3.7, evidenceGaps: '2.9' });
+    expect(out.matchedLineItems).toBe(3.7);
+    expect(out.evidenceGaps).toBe(2.9);
+  });
+
+  test('NaN/Infinity become 0 (only non-finite values)', () => {
+    const out = sanitizeKPIs({ totalInvoice: Number.NaN, overbillingAmount: Number.POSITIVE_INFINITY });
+    expect(out.totalInvoice).toBe(0);
+    expect(out.overbillingAmount).toBe(0);
   });
 });

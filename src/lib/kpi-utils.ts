@@ -43,6 +43,37 @@ export function recommendedPayable(billed: number, overbilling: number, unsuppor
   return Math.max(0, billed - overbilling - unsupported);
 }
 
+/** KPI names known to the engine (must match validateReport's list) */
+export const KPI_KEYS = [
+  'totalPO', 'totalReceipt', 'totalInvoice',
+  'matchedLineItems', 'mismatchedLineItems', 'missingLineItems', 'extraLineItems',
+  'matchRate', 'overbillingAmount', 'unsupportedCharges', 'evidenceGaps',
+] as const;
+
+function toFiniteNumber(v: unknown): number {
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Sanitize LLM-produced KPIs for safe downstream use.
+ * Only coerces types so the report renders cleanly:
+ *  - strings → numbers ("1000" → 1000)
+ *  - NaN/Infinity/undefined → 0
+ * Values are otherwise preserved EXACTLY as produced — including negative
+ * numbers (credit notes, discounts, refunds are legitimate in financial
+ * documents and must not be tampered with).
+ */
+export function sanitizeKPIs(kpis: Record<string, unknown>): Record<string, number> {
+  const out: Record<string, number> = {};
+
+  for (const key of KPI_KEYS) {
+    out[key] = toFiniteNumber(kpis[key]);
+  }
+
+  return out;
+}
+
 /** Overbilling as a percentage of billed. null when billed is 0. */
 export function overbilledPercent(overbilled: number, billed: number): number | null {
   if (!billed) return null;

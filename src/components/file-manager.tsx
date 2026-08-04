@@ -257,11 +257,12 @@ export function FileManager({ kbId, onWorkspacesChanged }: {
             Select all ({files.length} files)
           </label>
           
-          {files.map(f => {
+          {files.map((f, fi) => {
             const isParsed = parsedIds.has(f.id);
             const isParsing = parsing.includes(f.id);
             return (
-            <Card key={f.id} className={`p-3 flex items-center justify-between ${
+            <div key={f.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(fi, 8) * 30}ms` }}>
+            <Card className={`p-3 flex items-center justify-between ${
               selectedIds.has(f.id) ? 'border-foreground bg-muted' : ''
             }`}>
               <div className="flex items-center gap-3">
@@ -309,6 +310,7 @@ export function FileManager({ kbId, onWorkspacesChanged }: {
                 </Button>
               </div>
             </Card>
+            </div>
           )})}
         </div>
       )}
