@@ -86,7 +86,12 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
     setParsedIds(new Set(fileList.filter(isFileParsed).map(f => f.id)));
   };
 
-  useEffect(() => { loadFiles(); }, [kbId]);
+  useEffect(() => {
+    // Workspace switch: clear selection + job statuses for the previous workspace
+    setSelectedIds(new Set());
+    setJobStatuses({});
+    loadFiles();
+  }, [kbId]);
 
   // Load workspaces when upload dialog opens
   const openUploadDialog = async () => {
