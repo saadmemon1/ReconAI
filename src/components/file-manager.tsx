@@ -22,14 +22,13 @@ import {
   DialogTitle,
 } from './ui/dialog';
 import { resolveUploadTarget, Workspace } from '@/lib/workspace-utils';
+import { isFileParsed, FileWithProcessing } from '@/lib/file-status';
 
-interface FileItem {
+interface FileItem extends FileWithProcessing {
   id: string;
   filename: string;
   created_at: string;
 }
-
-const PARSED_KEY = 'reconai-parsed-files';
 
 export function FileManager({ kbId, onWorkspacesChanged }: { 
   kbId: string; 
@@ -52,27 +51,22 @@ export function FileManager({ kbId, onWorkspacesChanged }: {
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
 
   const [parsedIds, setParsedIds] = useState<Set<string>>(new Set());
-  
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(PARSED_KEY);
-      if (saved) setParsedIds(new Set(JSON.parse(saved)));
-    } catch {}
-  }, []);
 
   const markParsed = (fileIds: string[]) => {
     setParsedIds(prev => {
       const next = new Set(prev);
       fileIds.forEach(id => next.add(id));
-      localStorage.setItem(PARSED_KEY, JSON.stringify([...next]));
       return next;
     });
   };
 
   const loadFiles = async () => {
-    const res = await fetchDocAI(`/files?kb_id=${kbId}`);
+    const res = await fetchDocAI(`/files?kb_id=${kbId}&include=processing`);
     const data = await res.json();
-    setFiles(data.files || data.items || []);
+    const fileList: FileItem[] = data.files || data.items || [];
+    setFiles(fileList);
+    // Sync parsed state from the authoritative server response
+    setParsedIds(new Set(fileList.filter(isFileParsed).map(f => f.id)));
   };
 
   useEffect(() => { loadFiles(); }, [kbId]);

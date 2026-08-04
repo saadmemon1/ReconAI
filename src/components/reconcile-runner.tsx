@@ -7,8 +7,9 @@ import { Card } from './ui/card';
 import { ReportViewer } from './report-viewer';
 import { ReconciliationReport } from '@/engine/reconcile';
 import { reportStorageKey, LEGACY_REPORT_KEY } from '@/lib/report-storage';
+import { isFileParsed, FileWithProcessing } from '@/lib/file-status';
 
-interface FileItem {
+interface FileItem extends FileWithProcessing {
   id: string;
   filename: string;
 }
@@ -23,21 +24,16 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
   const [report, setReport] = useState<ReconciliationReport | null>(null);
 
   useEffect(() => {
-    // Workspace switch: reset report + file selection for the new workspace
-    setReport(null);
-    setSelectedIds(new Set());
+    // Workspace switch: the component is remounted via key={kbId} in the
+    // dashboard, which resets report + file selection naturally.
 
-    fetchDocAI(`/files?kb_id=${kbId}`)
+    // Only show parsed files in Reconcile tab (server-side status
+    // from ?include=processing → processing.latest_parse_job.status === 'completed')
+    fetchDocAI(`/files?kb_id=${kbId}&include=processing`)
       .then(r => r.json())
       .then(d => {
-        const allFiles = d.files || d.items || [];
-        // Only show parsed files in Reconcile tab
-        let parsedIds: string[] = [];
-        try {
-          parsedIds = JSON.parse(localStorage.getItem('reconai-parsed-files') || '[]');
-        } catch {}
-        const parsedSet = new Set(parsedIds);
-        setFiles(allFiles.filter((f: FileItem) => parsedSet.has(f.id)));
+        const allFiles: FileItem[] = d.files || d.items || [];
+        setFiles(allFiles.filter(isFileParsed));
       })
       .catch(() => {});
   }, [kbId]);
