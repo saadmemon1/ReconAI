@@ -45,7 +45,7 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
     }
   }, [thinking]);
 
-  const run = async (fileIds: string[]) => {
+  const run = async (fileIds: string[], requestedModelId: string) => {
     if (fileIds.length < 2) {
       setError('Need at least 2 parsed documents to reconcile.');
       return;
@@ -57,17 +57,19 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
     setThinkingOpen(true); // auto-open while streaming
 
     try {
-      // Pick the model: DocAI default if available, else first available LM Studio model, else DeepSeek
-      let modelId = '';
-      try {
-        const modelsRes = await fetchDocAI('/ai/models');
-        const modelsData = await modelsRes.json();
-        const models: Array<{ id: string; available?: boolean }> = modelsData.models || [];
-        modelId = modelsData.default_model_id
-          || models.find(m => m.available)?.id
-          || '';
-      } catch {}
-      if (!modelId) modelId = 'deepseek/deepseek-chat';
+      // Model comes from the Files tab selector; auto-pick only as a fallback
+      let modelId = requestedModelId;
+      if (!modelId) {
+        try {
+          const modelsRes = await fetchDocAI('/ai/models');
+          const modelsData = await modelsRes.json();
+          const models: Array<{ id: string; available?: boolean }> = modelsData.models || [];
+          modelId = modelsData.default_model_id
+            || models.find(m => m.available)?.id
+            || '';
+        } catch {}
+        if (!modelId) modelId = 'deepseek/deepseek-chat';
+      }
 
       const res = await fetch('/api/reconcile', {
         method: 'POST',
@@ -134,7 +136,7 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
   useEffect(() => {
     if (!reconcileRequest || reconcileRequest.nonce === lastNonce.current) return;
     lastNonce.current = reconcileRequest.nonce;
-    run(reconcileRequest.fileIds);
+    run(reconcileRequest.fileIds, reconcileRequest.modelId);
   }, [reconcileRequest]);
 
   return (

@@ -23,6 +23,7 @@ import {
 } from './ui/dialog';
 import { resolveUploadTarget, Workspace } from '@/lib/workspace-utils';
 import { isFileParsed, FileWithProcessing } from '@/lib/file-status';
+import { ModelSelector } from './model-selector';
 
 interface FileItem extends FileWithProcessing {
   id: string;
@@ -44,10 +45,11 @@ function isAcceptedFile(file: File): boolean {
 export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: { 
   kbId: string; 
   onWorkspacesChanged?: () => void;
-  onReconcile?: (fileIds: string[]) => void;
+  onReconcile?: (fileIds: string[], modelId: string) => void;
 }) {
   const { fetchDocAI } = useAuth();
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [modelId, setModelId] = useState('');
   const [parsing, setParsing] = useState<string[]>([]);
   const [jobStatuses, setJobStatuses] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
@@ -277,12 +279,13 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
           <div className="flex items-center gap-2">
             {selectedIds.size >= 2 && (
               <>
+                <ModelSelector value={modelId} onChange={setModelId} />
                 <Button
                   variant="secondary"
                   size="sm"
-                  disabled={unparsedSelected > 0}
-                  onClick={() => onReconcile?.([...selectedIds])}
-                  className={unparsedSelected === 0 ? 'bg-success text-white hover:bg-success/80' : ''}
+                  disabled={unparsedSelected > 0 || !modelId}
+                  onClick={() => onReconcile?.([...selectedIds], modelId)}
+                  className={unparsedSelected === 0 && modelId ? 'bg-success text-white hover:bg-success/80' : ''}
                 >
                   Reconcile {selectedIds.size} Documents
                 </Button>

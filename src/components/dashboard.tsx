@@ -20,6 +20,7 @@ type Tab = 'files' | 'report';
 
 export interface ReconcileRequest {
   fileIds: string[];
+  modelId: string;
   nonce: number;
 }
 
@@ -31,8 +32,8 @@ export function Dashboard() {
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [reconcileRequest, setReconcileRequest] = useState<ReconcileRequest | null>(null);
 
-  const handleReconcile = (fileIds: string[]) => {
-    setReconcileRequest({ fileIds, nonce: Date.now() });
+  const handleReconcile = (fileIds: string[], modelId: string) => {
+    setReconcileRequest({ fileIds, modelId, nonce: Date.now() });
     setTab('report');
   };
 
