@@ -121,6 +121,10 @@ export async function POST(req: NextRequest) {
               max_tokens: 32000,
               // LM Studio reasoning models support reasoning_effort; harmless for others
               ...(provider === 'lmstudio' ? { reasoning_effort: 'high' } : {}),
+              // DeepSeek V4 Pro: enable thinking + high reasoning effort per their API docs
+              ...(provider === 'deepseek' && modelName.includes('pro')
+                ? { thinking: { type: 'enabled' }, reasoning_effort: 'high' }
+                : {}),
               stream: true,
             }),
           });

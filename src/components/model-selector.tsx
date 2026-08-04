@@ -11,8 +11,8 @@ interface ModelInfo {
 
 // DeepSeek models are always available (API key configured server-side)
 const DEEPSEEK_MODELS: ModelInfo[] = [
-  { id: 'deepseek/deepseek-chat', provider: 'deepseek', name: 'DeepSeek V4 Flash', available: true },
-  { id: 'deepseek/deepseek-reasoner', provider: 'deepseek', name: 'DeepSeek V4 Pro', available: true },
+  { id: 'deepseek/deepseek-v4-flash', provider: 'deepseek', name: 'DeepSeek V4 Flash', available: true },
+  { id: 'deepseek/deepseek-v4-pro', provider: 'deepseek', name: 'DeepSeek V4 Pro', available: true },
 ];
 
 export function ModelSelector({ 

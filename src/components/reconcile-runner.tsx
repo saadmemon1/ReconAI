@@ -68,7 +68,7 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
             || models.find(m => m.available)?.id
             || '';
         } catch {}
-        if (!modelId) modelId = 'deepseek/deepseek-chat';
+        if (!modelId) modelId = 'deepseek/deepseek-v4-flash';
       }
 
       const res = await fetch('/api/reconcile', {
