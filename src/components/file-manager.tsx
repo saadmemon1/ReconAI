@@ -284,7 +284,9 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
           <div className="flex items-center gap-2">
             {selectedIds.size >= 2 && (
               <>
-                <ModelSelector value={modelId} onChange={setModelId} />
+                {unparsedSelected === 0 && (
+                  <ModelSelector value={modelId} onChange={setModelId} />
+                )}
                 <Button
                   variant="secondary"
                   size="sm"
