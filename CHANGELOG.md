@@ -224,6 +224,23 @@
 - Trash icon next to the workspace selector (visible when a workspace is selected) → confirmation dialog naming the workspace, warning ALL files are deleted irreversibly → destructive Delete Workspace button (still sends ?confirm_permanent=true). Deleted active workspace deselects.
 - Credits badge now fixed at bottom-left (z-40), always visible while scrolling.
 
+### [2026-08-04] Security F5: org-aware session + x-docai-org-id forwarding (VERIFIED)
+
+- Files: docai-proxy.ts, signin/route.ts, signup/route.ts, auth/session/route.ts, reconcile/route.ts, session-org.ts (+tests)
+- DocAI file/KB endpoints require BOTH the session cookie and x-docai-org-id (per control-plane OpenAPI security); orgId was previously always '' and the header never sent — cross-org access rested entirely on DocAI's token scoping.
+- signin/signup now fetch the real currentOrgId (via /v1/auth/session) and store it in the encrypted JWT; proxy forwards x-docai-org-id; session route self-heals stale/empty orgId by re-issuing the cookie.
+- reconcile route passes orgId and fails loudly ("File <id> not accessible (HTTP N)") when DocAI rejects a file — no more silent "0 segs" reconciliation of foreign documents.
+- Verified with two real accounts: cross-org file fetch → 404 "File not found" (DocAI enforces scoping); reconcile with a cross-org fileId → rejected before any LLM call.
+- 4 new extractOrgId unit tests (71 total).
+
+### [2026-08-04] Model selector: duplicate-option + stale-closure fixes
+
+- Files: model-selector.tsx, reconcile-runner.tsx, reconcile/route.ts
+- Fixed stale-closure bug: the async /ai/models response auto-selected the default model and silently overwrote a model the user had just picked (the select tick appeared to jump to a same-named LM Studio entry).
+- Fixed duplicate option values: /ai/models response already includes deepseek/deepseek-v4-flash and deepseek-v4-pro (provider: deepseek) — the selector was rendering them in BOTH the LM Studio group (from the API list) and the DeepSeek group (hardcoded), and browsers tick the first duplicate. Now split by provider.
+- DeepSeek model names corrected to current API names (deepseek-v4-flash / deepseek-v4-pro); thinking: {type: "enabled"} + reasoning_effort: "high" sent for both (both models support thinking).
+- Attempted "deepseek via LM Studio" routing was reverted: the listed deepseek models are cloud models, not models the LM Studio server actually serves (LM Studio 400s "No models loaded" / silently falls back to the loaded model).
+
 ### [2026-08-04] Model selection: DeepSeek cloud only (LM Studio dormant)
 
 - Files: model-selector.tsx, reconcile-runner.tsx
