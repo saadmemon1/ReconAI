@@ -20,13 +20,6 @@ const severityColors: Record<string, string> = {
   low: 'text-muted-foreground',
 };
 
-const severityBg: Record<string, string> = {
-  critical: 'bg-destructive/5 border-destructive/20',
-  high: 'bg-warning/5 border-warning/20',
-  medium: 'bg-secondary/5 border-secondary/20',
-  low: 'bg-muted/5 border-muted/20',
-};
-
 export function ReportViewer({ report }: { report: ReconciliationReport }) {
   const { documentClassifications, groups, unmatchedDocuments, summary, timestamp } = report;
 
@@ -115,11 +108,11 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         </div>
 
         <div className="space-y-3">
-          {sortedFindings.map((f, i) => (
-            <div key={f.id} className="animate-fade-up" style={{ animationDelay: `${i * 40}ms` }}>
-              <FindingCard finding={f} />
-            </div>
-          ))}
+          {sortedFindings.length === 0 ? (
+            <p className="text-sm text-secondary">No discrepancies found.</p>
+          ) : (
+            <FindingsTable findings={sortedFindings} />
+          )}
         </div>
       </Card>
 
@@ -180,35 +173,53 @@ function KPIBox({ label, value, sub, tone }: {
   );
 }
 
-function FindingCard({ finding }: { finding: Finding }) {
+function FindingsTable({ findings }: { findings: Finding[] }) {
   return (
-    <div className={`border rounded-lg p-4 ${severityBg[finding.severity]}`}>
-      <div className="flex items-start justify-between mb-2">
-        <div>
-          <span className={`text-xs font-semibold uppercase ${severityColors[finding.severity]}`}>
-            {finding.severity}
-          </span>
-          <span className="text-xs text-secondary ml-2">· {finding.category.replace(/_/g, ' ')}</span>
-          <span className="text-xs text-secondary ml-2">· {finding.document}</span>
-        </div>
-        <span className="text-xs text-secondary font-mono">{finding.id}</span>
-      </div>
-      <p className="text-base leading-relaxed mb-2">{finding.description}</p>
-      {finding.expected && finding.actual && (
-        <div className="text-sm text-secondary mb-2">
-          Expected: {finding.expected} → Actual: {finding.actual}
-        </div>
-      )}
-      {finding.sourceCitations.length > 0 && (
-        <div className="mt-2">
-          <p className="text-sm font-medium text-secondary mb-1">Source Evidence:</p>
-          {finding.sourceCitations.map((cite, i) => (
-            <blockquote key={i} className="text-sm text-secondary border-l-2 border-border pl-2 mb-1 italic">
-              {cite}
-            </blockquote>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border">
+            <th className="text-left py-2 pr-4 font-medium">Severity</th>
+            <th className="text-left py-2 px-2 font-medium">Category</th>
+            <th className="text-left py-2 px-2 font-medium">Doc</th>
+            <th className="text-left py-2 px-2 font-medium">Description</th>
+            <th className="text-left py-2 px-2 font-medium">Expected → Actual</th>
+            <th className="text-left py-2 pl-2 font-medium">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {findings.map(f => (
+            <tr key={f.id} className="border-b border-border align-top">
+              <td className={`py-3 pr-4 font-semibold uppercase text-xs ${severityColors[f.severity]}`}>
+                {f.severity}
+              </td>
+              <td className="py-3 px-2 text-xs text-secondary whitespace-nowrap">
+                {f.category.replace(/_/g, ' ')}
+              </td>
+              <td className="py-3 px-2 text-xs text-secondary font-mono">
+                {f.document}
+              </td>
+              <td className="py-3 px-2 text-base leading-relaxed">{f.description}</td>
+              <td className="py-3 px-2 text-sm text-secondary whitespace-nowrap">
+                {f.expected && f.actual ? `${f.expected} → ${f.actual}` : '-'}
+              </td>
+              <td className="py-3 pl-2">
+                {f.sourceCitations.length > 0 ? (
+                  <ul className="space-y-1">
+                    {f.sourceCitations.map((cite, i) => (
+                      <li key={i} className="text-sm text-secondary border-l-2 border-border pl-2 italic">
+                        {cite}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className="text-sm text-secondary">-</span>
+                )}
+              </td>
+            </tr>
           ))}
-        </div>
-      )}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -257,7 +268,7 @@ function SeverityBadge({ label, count, severity }: {
   label: string; count: number; severity: string 
 }) {
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${severityBg[severity]}`}>
+    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-muted/40`}>
       <span className={`text-sm font-semibold ${severityColors[severity]}`}>{label}</span>
       <span className="text-sm font-mono">{count}</span>
     </div>

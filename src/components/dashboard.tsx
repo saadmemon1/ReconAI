@@ -5,6 +5,16 @@ import { WorkspaceManager } from './workspace-manager';
 import { FileManager } from './file-manager';
 import { ReconcileRunner } from './reconcile-runner';
 import { Button } from './ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from './ui/dialog';
+import { LogOut } from 'lucide-react';
 import { useState } from 'react';
 
 type Tab = 'files' | 'reconcile';
@@ -14,20 +24,48 @@ export function Dashboard() {
   const [tab, setTab] = useState<Tab>('files');
   const [selectedKB, setSelectedKB] = useState<string | null>(null);
   const [wsRefreshKey, setWsRefreshKey] = useState(0);
+  const [signOutOpen, setSignOutOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="border-b border-border px-8 py-4 flex items-center justify-between">
         <h1 className="text-h2">ReconAI</h1>
-        <div className="flex items-center gap-4">
-          <CreditDisplay />
-          <Button variant="ghost" onClick={signOut}>Sign Out</Button>
-        </div>
+        <Dialog open={signOutOpen} onOpenChange={setSignOutOpen}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Sign out"
+            title="Sign out"
+            className="w-9 h-9"
+            onClick={() => setSignOutOpen(true)}
+          >
+            <LogOut className="w-4 h-4" />
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Sign out of ReconAI?</DialogTitle>
+              <DialogDescription>
+                You will need to sign in again to access your workspaces and reports.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setSignOutOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  setSignOutOpen(false);
+                  signOut();
+                }}
+              >
+                Sign Out
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </header>
 
       {/* Body */}
-      <div className="max-w-6xl mx-auto px-8 py-8">
+      <div className="flex-1 w-full max-w-6xl mx-auto px-8 py-8">
         {/* Workspace Selection */}
         <section className="mb-8">
           <WorkspaceManager 
@@ -62,6 +100,11 @@ export function Dashboard() {
           </>
         )}
       </div>
+
+      {/* Credits — bottom left */}
+      <footer className="px-8 pb-6">
+        <CreditDisplay />
+      </footer>
     </div>
   );
 }
