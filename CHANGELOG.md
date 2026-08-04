@@ -191,3 +191,35 @@
 
 - Files: file-manager.tsx
 - Upload input restricted to PDF/images via `accept` attr + client-side MIME filter (rejected files counted and shown in a notice); supported-formats disclaimer in the upload dialog. DocAI confirmed to accept only PDFs/images — closes stored-XSS-via-HTML/SVG class at the boundary.
+
+### [2026-08-04] UI: icon sign-out with confirmation, credits bottom-left, findings table
+
+- Files: dashboard.tsx, report-viewer.tsx
+- Sign Out button → LogOut icon; click opens a confirmation dialog (Cancel / Sign Out) — no accidental single-click sign-outs.
+- Credits moved from the header to the bottom-left (later made floating).
+- Findings rendered as a table (Severity | Category | Doc | Description | Expected → Actual | Evidence), severity color-coded, empty state added.
+
+### [2026-08-04] UX: Report tab flow, reconcile-from-Files, auto-parse on upload
+
+- Files: file-manager.tsx, reconcile-runner.tsx, dashboard.tsx
+- File list sorted parsed-first (server status via ?include=processing).
+- Reconcile tab renamed **Report**; it no longer lists files or picks a model — it shows the persisted workspace report, or live thinking + fresh report when triggered. Empty state points to the Files tab.
+- Files tab bulk bar: Parse X Selected (left) + green **Reconcile X Documents** (right, shown when ≥2 selected); grayed out with "Only parsed files can be reconciled" subtitle when a non-parsed file is selected. Clicking jumps to the Report tab and starts reconciling.
+- **Auto-parse on upload**: freshly uploaded files automatically queue parse jobs (upload IDs captured from the response, or matched by filename after refresh).
+- Model auto-picked initially (default → first available LM Studio → deepseek-chat); later replaced by an explicit selector.
+
+### [2026-08-04] Model selector next to Reconcile button
+
+- Files: file-manager.tsx, reconcile-runner.tsx, dashboard.tsx
+- ModelSelector rendered beside "Reconcile N Documents"; modelId flows FileManager → ReconcileRequest → runner. Button disabled until a model is chosen. Selector hidden when the button is disabled (non-parsed file selected) or absent (<2 selected). Auto-pick kept as fallback only.
+
+### [2026-08-04] Fix: clear file selection + job statuses on workspace switch
+
+- Files: file-manager.tsx
+- FileManager isn't remounted per workspace, so the kbId effect now resets selectedIds and jobStatuses before reloading — the bulk bar no longer lingers with the previous workspace's selection.
+
+### [2026-08-04] Workspace delete with confirmation dialog; floating credits
+
+- Files: workspace-manager.tsx, dashboard.tsx
+- Trash icon next to the workspace selector (visible when a workspace is selected) → confirmation dialog naming the workspace, warning ALL files are deleted irreversibly → destructive Delete Workspace button (still sends ?confirm_permanent=true). Deleted active workspace deselects.
+- Credits badge now fixed at bottom-left (z-40), always visible while scrolling.
