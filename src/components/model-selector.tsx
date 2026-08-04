@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from './auth-provider';
 
 interface ModelInfo {
@@ -24,6 +24,10 @@ export function ModelSelector({
 }) {
   const { fetchDocAI } = useAuth();
   const [lmStudioModels, setLmStudioModels] = useState<ModelInfo[]>([]);
+  // Guards against the async /ai/models response overwriting a model the
+  // user already picked (stale-closure bug: the mount effect captured the
+  // initial value, so its default-model auto-select could clobber choices)
+  const userPicked = useRef(false);
 
   useEffect(() => {
     fetchDocAI('/ai/models')
@@ -34,11 +38,12 @@ export function ModelSelector({
           id: m.id, // API already returns full id with provider prefix
         }));
         setLmStudioModels(models);
-        if (d.default_model_id && !value) {
+        if (d.default_model_id && !value && !userPicked.current) {
           onChange(d.default_model_id);
         }
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const allModels = [...lmStudioModels, ...DEEPSEEK_MODELS];
@@ -46,7 +51,10 @@ export function ModelSelector({
   return (
     <select 
       value={value}
-      onChange={e => onChange(e.target.value)}
+      onChange={e => {
+        userPicked.current = true;
+        onChange(e.target.value);
+      }}
       className="border border-border rounded-md px-3 py-2 text-sm bg-background"
     >
       <option value="">Select a model...</option>
