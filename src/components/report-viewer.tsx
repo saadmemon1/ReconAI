@@ -116,7 +116,7 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
               return cls ? `${cls.fileName} (${cls.type.replace(/_/g, ' ')})` : `Doc ${d}`;
             }).join(' · ')}
           </p>
-          <LineItemsTable lineItems={group.lineItems} />
+          <LineItemsTable lineItems={group.lineItems} currency={currency} />
           </Card>
         </div>
       ))}
@@ -229,7 +229,8 @@ function FindingCard({ finding }: { finding: Finding }) {
   );
 }
 
-function LineItemsTable({ lineItems }: { lineItems: LineItem[] }) {
+function LineItemsTable({ lineItems, currency }: { lineItems: LineItem[]; currency: string }) {
+  const fmt = (n: number) => `${formatCurrency(currency)}${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -249,10 +250,10 @@ function LineItemsTable({ lineItems }: { lineItems: LineItem[] }) {
             <tr key={i} className="border-b border-border">
               <td className="py-2 pr-4">{li.description}</td>
               <td className="text-right py-2 px-2">{li.poQuantity ?? '-'}</td>
-              <td className="text-right py-2 px-2">{li.poUnitPrice != null ? `$${li.poUnitPrice.toFixed(2)}` : '-'}</td>
+              <td className="text-right py-2 px-2">{li.poUnitPrice != null ? fmt(li.poUnitPrice) : '-'}</td>
               <td className="text-right py-2 px-2">{li.receiptQuantity ?? '-'}</td>
               <td className="text-right py-2 px-2">{li.invoiceQuantity ?? '-'}</td>
-              <td className="text-right py-2 px-2">{li.invoiceUnitPrice != null ? `$${li.invoiceUnitPrice.toFixed(2)}` : '-'}</td>
+              <td className="text-right py-2 px-2">{li.invoiceUnitPrice != null ? fmt(li.invoiceUnitPrice) : '-'}</td>
               <td className="text-right py-2 pl-2">
                 <span className={`text-xs ${
                   li.status === 'matched' ? 'text-success' : 'text-warning'
