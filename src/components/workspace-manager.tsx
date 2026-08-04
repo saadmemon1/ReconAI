@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './auth-provider';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { Trash2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -14,6 +15,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
@@ -32,6 +34,7 @@ export function WorkspaceManager({ selectedKB, onSelect }: {
   const [kbs, setKBs] = useState<KB[]>([]);
   const [newName, setNewName] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<KB | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadKBs = async () => {
@@ -61,10 +64,11 @@ export function WorkspaceManager({ selectedKB, onSelect }: {
     loadKBs();
   };
 
-  const deleteKB = async (id: string) => {
-    if (!confirm('Permanently delete this workspace and ALL files? This is irreversible.')) return;
-    await fetchDocAI(`/knowledge-bases/${id}?confirm_permanent=true`, { method: 'DELETE' });
-    if (selectedKB === id) onSelect(null);
+  const deleteKB = async () => {
+    if (!deleteTarget) return;
+    await fetchDocAI(`/knowledge-bases/${deleteTarget.id}?confirm_permanent=true`, { method: 'DELETE' });
+    if (selectedKB === deleteTarget.id) onSelect(null);
+    setDeleteTarget(null);
     loadKBs();
   };
 
@@ -88,9 +92,42 @@ export function WorkspaceManager({ selectedKB, onSelect }: {
         </SelectContent>
       </Select>
 
+      {selectedKB && (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Delete workspace"
+          title="Delete workspace"
+          className="w-9 h-9 text-destructive"
+          onClick={() => {
+            const target = kbs.find(k => k.id === selectedKB);
+            if (target) setDeleteTarget(target);
+          }}
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      )}
+
       <Button variant="secondary" onClick={() => setCreateOpen(true)}>
         New Workspace
       </Button>
+
+      {/* Delete confirmation */}
+      <Dialog open={deleteTarget !== null} onOpenChange={o => !o && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete workspace?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete <strong>{deleteTarget?.name}</strong> and ALL files inside it.
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={deleteKB}>Delete Workspace</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">

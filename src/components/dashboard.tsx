@@ -118,10 +118,10 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* Credits — bottom left */}
-      <footer className="px-8 pb-6">
+      {/* Credits — floating bottom left */}
+      <div className="fixed bottom-4 left-4 z-40">
         <CreditDisplay />
-      </footer>
+      </div>
     </div>
   );
 }
