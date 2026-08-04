@@ -1,6 +1,5 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { useAuth } from './auth-provider';
 import { Card } from './ui/card';
 import { ReportViewer } from './report-viewer';
 import { ReconciliationReport } from '@/engine/reconcile';
@@ -11,7 +10,6 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
   kbId: string;
   reconcileRequest: ReconcileRequest | null;
 }) {
-  const { fetchDocAI } = useAuth();
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   // Load this workspace's persisted report (with legacy migration).
@@ -57,19 +55,10 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
     setThinkingOpen(true); // auto-open while streaming
 
     try {
-      // Model comes from the Files tab selector; auto-pick only as a fallback
+      // Model comes from the Files tab selector; fall back to DeepSeek V4 Flash
+      // (LM Studio support is dormant — see reconcile route's lmstudio branch)
       let modelId = requestedModelId;
-      if (!modelId) {
-        try {
-          const modelsRes = await fetchDocAI('/ai/models');
-          const modelsData = await modelsRes.json();
-          const models: Array<{ id: string; available?: boolean }> = modelsData.models || [];
-          modelId = modelsData.default_model_id
-            || models.find(m => m.available)?.id
-            || '';
-        } catch {}
-        if (!modelId) modelId = 'deepseek/deepseek-v4-flash';
-      }
+      if (!modelId) modelId = 'deepseek/deepseek-v4-flash';
 
       const res = await fetch('/api/reconcile', {
         method: 'POST',
