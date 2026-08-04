@@ -30,6 +30,17 @@ interface FileItem extends FileWithProcessing {
   created_at: string;
 }
 
+// DocAI only accepts PDFs and images (confirmed with the platform)
+const ACCEPTED_TYPES = new Set([
+  'application/pdf',
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/tiff', 'image/bmp',
+]);
+const ACCEPT_ATTR = '.pdf,.png,.jpg,.jpeg,.gif,.webp,.tiff,.bmp';
+
+function isAcceptedFile(file: File): boolean {
+  return ACCEPTED_TYPES.has(file.type);
+}
+
 export function FileManager({ kbId, onWorkspacesChanged }: { 
   kbId: string; 
   onWorkspacesChanged?: () => void 
@@ -49,6 +60,7 @@ export function FileManager({ kbId, onWorkspacesChanged }: {
   const [uploadNewName, setUploadNewName] = useState('');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [rejectedCount, setRejectedCount] = useState(0);
 
   const [parsedIds, setParsedIds] = useState<Set<string>>(new Set());
 
@@ -82,6 +94,7 @@ export function FileManager({ kbId, onWorkspacesChanged }: {
     setUploadMode('existing');
     setUploadNewName('');
     setUploadFiles([]);
+    setRejectedCount(0);
     setUploadOpen(true);
   };
 
@@ -371,12 +384,26 @@ export function FileManager({ kbId, onWorkspacesChanged }: {
             <input
               type="file"
               multiple
-              onChange={e => setUploadFiles(Array.from(e.target.files || []))}
+              accept={ACCEPT_ATTR}
+              onChange={e => {
+                const picked = Array.from(e.target.files || []);
+                const accepted = picked.filter(isAcceptedFile);
+                setRejectedCount(picked.length - accepted.length);
+                setUploadFiles(accepted);
+              }}
               className="block w-full text-sm text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium file:text-foreground"
             />
             {uploadFiles.length > 0 && (
               <p className="text-xs text-secondary">{uploadFiles.length} file(s) selected</p>
             )}
+            {rejectedCount > 0 && (
+              <p className="text-xs text-destructive">
+                {rejectedCount} file(s) skipped — only PDF and image files (PNG, JPG, GIF, WEBP, TIFF, BMP) are supported.
+              </p>
+            )}
+            <p className="text-xs text-secondary">
+              Supported formats: PDF, PNG, JPG, GIF, WEBP, TIFF, BMP only.
+            </p>
           </div>
 
           <DialogFooter>
