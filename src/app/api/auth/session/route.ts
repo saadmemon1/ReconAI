@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decryptDocAISession, COOKIE_NAME } from '@/lib/session';
+import { decryptDocAISession, encryptDocAISession, COOKIE_NAME, getSessionCookieHeader } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
 
 export async function GET(req: NextRequest) {
@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
   // Verify with DocAI
   const res = await docaiFetch('/v1/auth/session', {
     docaiSessionToken: session.token,
+    docaiOrgId: session.orgId,
   });
 
   if (!res.ok) {
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
   const data = await res.json();
   const s = data.session || data;
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     authenticated: true,
     user: s.user,
     orgId: s.currentOrgId,
@@ -34,4 +35,13 @@ export async function GET(req: NextRequest) {
     currentKnowledgeBaseId: s.currentKnowledgeBaseId,
     currentKnowledgeBase: s.currentKnowledgeBase,
   });
+
+  // F5 self-heal: if the JWT's orgId is stale (or was empty from before the
+  // fix), re-encrypt the cookie with the authoritative orgId from DocAI.
+  if (s.currentOrgId && s.currentOrgId !== session.orgId) {
+    const refreshed = await encryptDocAISession(session.token, s.currentOrgId);
+    response.headers.set('Set-Cookie', getSessionCookieHeader(refreshed));
+  }
+
+  return response;
 }

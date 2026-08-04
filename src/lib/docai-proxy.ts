@@ -6,16 +6,22 @@ export async function docaiFetch(
     method?: string;
     body?: BodyInit | object;
     docaiSessionToken?: string;
+    docaiOrgId?: string;
     contentType?: string;
     origin?: string;
   } = {}
 ): Promise<Response> {
-  const { method = 'GET', body, docaiSessionToken, contentType } = options;
+  const { method = 'GET', body, docaiSessionToken, docaiOrgId, contentType } = options;
   
   const headers: Record<string, string> = {};
   
   if (docaiSessionToken) {
     headers['Cookie'] = `better-auth.session_token=${docaiSessionToken}`;
+  }
+  // F5 fix: DocAI file/KB endpoints require the org header alongside the
+  // session cookie (per the control-plane OpenAPI security requirements).
+  if (docaiOrgId) {
+    headers['x-docai-org-id'] = docaiOrgId;
   }
   
   headers['Origin'] = options.origin || 'http://localhost:3000';

@@ -75,6 +75,7 @@ async function handleRequest(
     method,
     body,
     docaiSessionToken: session.token,
+    docaiOrgId: session.orgId,
   });
 
   // Forward response

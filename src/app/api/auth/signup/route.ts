@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { docaiFetch } from '@/lib/docai-proxy';
 import { encryptDocAISession, getSessionCookieHeader } from '@/lib/session';
+import { fetchCurrentOrgId } from '@/lib/session-org';
 
 export async function POST(req: NextRequest) {
   const { email, password, name, organization } = await req.json();
@@ -35,8 +36,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No session token returned' }, { status: 500 });
   }
 
-  // Encrypt session. orgId is populated later via /api/auth/session
-  const encrypted = await encryptDocAISession(token, '');
+  // F5 fix: carry the real org id in the JWT so the proxy can forward
+  // x-docai-org-id (DocAI file/KB endpoints require it).
+  const orgId = await fetchCurrentOrgId(token);
+  const encrypted = await encryptDocAISession(token, orgId);
   
   const response = NextResponse.json({ success: true });
   response.headers.set('Set-Cookie', getSessionCookieHeader(encrypted));

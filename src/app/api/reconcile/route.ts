@@ -39,12 +39,19 @@ export async function POST(req: NextRequest) {
     for (const fileId of fileIds) {
       const fileRes = await docaiFetch(`/v1/files/${fileId}`, {
         docaiSessionToken: session.token,
+        docaiOrgId: session.orgId,
       });
+      // F5: fail loudly if DocAI rejects the file (cross-org or missing) —
+      // no more silently reconciling an empty/foreign document
+      if (!fileRes.ok) {
+        throw new Error(`File ${fileId} not accessible (HTTP ${fileRes.status})`);
+      }
       const fileData = await fileRes.json();
       let fileName = fileData.filename || fileData.name || 'Unknown';
       
       const segRes = await docaiFetch(`/v1/files/${fileId}/segments`, {
         docaiSessionToken: session.token,
+        docaiOrgId: session.orgId,
       });
       const segData = await segRes.json();
       let segments = segData.segments || segData.items || [];
@@ -61,7 +68,7 @@ export async function POST(req: NextRequest) {
         fileName = segments[0]?.docName || fileName;
       }
       // Normalize API response: map markdown→content, title→type, assign numeric index
-      segments = segments.map((s: any, i: number) => ({
+      segments = segments.map((s: { markdown?: string; content?: string; title?: string; type?: string }, i: number) => ({
         index: i,
         content: s.markdown || s.content || '',
         type: s.title || s.type,
