@@ -6,6 +6,7 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 import { ReportViewer } from './report-viewer';
 import { ReconciliationReport } from '@/engine/reconcile';
+import { reportStorageKey, LEGACY_REPORT_KEY } from '@/lib/report-storage';
 
 interface FileItem {
   id: string;
@@ -22,6 +23,10 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
   const [report, setReport] = useState<ReconciliationReport | null>(null);
 
   useEffect(() => {
+    // Workspace switch: reset report + file selection for the new workspace
+    setReport(null);
+    setSelectedIds(new Set());
+
     fetchDocAI(`/files?kb_id=${kbId}`)
       .then(r => r.json())
       .then(d => {
@@ -39,10 +44,20 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('reconai-last-report');
+      // Per-workspace report: load this workspace's report (with legacy migration)
+      const key = reportStorageKey(kbId);
+      let saved = localStorage.getItem(key);
+      if (saved === null) {
+        // First run after upgrade: adopt the old global report if present, then drop it
+        saved = localStorage.getItem(LEGACY_REPORT_KEY);
+        if (saved !== null) {
+          localStorage.setItem(key, saved);
+          localStorage.removeItem(LEGACY_REPORT_KEY);
+        }
+      }
       if (saved) setReport(JSON.parse(saved));
     } catch {}
-  }, []);
+  }, [kbId]);
 
   const toggle = (id: string) => {
     setSelectedIds(prev => {
@@ -77,7 +92,7 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
       const data = await res.json();
       const r = data.report;
       setReport(r);
-      localStorage.setItem('reconai-last-report', JSON.stringify(r));
+      localStorage.setItem(reportStorageKey(kbId), JSON.stringify(r));
     } catch (err: any) {
       setError(err.message);
     } finally {
