@@ -201,11 +201,11 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
       {(running || thinking.length > 0) && (
         <details className="group" open={thinkingOpen} onToggle={e => setThinkingOpen((e.target as HTMLDetailsElement).open)}>
           <summary className="cursor-pointer text-h3 mb-2 flex items-center gap-2 select-none">
+            <span className="text-xs text-secondary transition-transform group-open:rotate-90">▶</span>
             LLM Thinking
             {running && (
               <span className="w-2 h-2 rounded-full bg-foreground animate-pulse" aria-label="thinking" />
             )}
-            {!running && <span className="text-xs text-secondary font-normal">({thinking.length} chunks)</span>}
           </summary>
           <div
             ref={thinkingRef}
