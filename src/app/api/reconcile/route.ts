@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { decryptDocAISession, COOKIE_NAME } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
 import { reconcile, ReconciliationDocument } from '@/engine/reconcile';
+import { isDocAIUuid } from '@/lib/proxy-path-validation';
 
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL!;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY!;
@@ -22,8 +23,13 @@ export async function POST(req: NextRequest) {
   const { fileIds, modelId } = body;
   // modelId format: "lmstudio/qwen3-vl-32b" or "deepseek/deepseek-chat"
 
-  if (!fileIds || fileIds.length < 2) {
+  if (!Array.isArray(fileIds) || fileIds.length < 2) {
     return NextResponse.json({ error: 'Need at least 2 documents' }, { status: 400 });
+  }
+  // Security gate (F2 fix): fileIds must be plain DocAI UUIDs. Blocks path
+  // injection like "../api-keys" that previously reached arbitrary /v1 endpoints.
+  if (!fileIds.every((id: unknown) => typeof id === 'string' && isDocAIUuid(id))) {
+    return NextResponse.json({ error: 'Invalid file id' }, { status: 400 });
   }
 
   try {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { decryptDocAISession, COOKIE_NAME } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
+import { isSafeProxyPath } from '@/lib/proxy-path-validation';
 
 export async function GET(
   req: NextRequest,
@@ -45,6 +46,13 @@ async function handleRequest(
   const session = await decryptDocAISession(encrypted);
   if (!session) {
     return NextResponse.json({ error: 'Session expired' }, { status: 401 });
+  }
+
+  // Security gate (F1 fix): only relay known-safe DocAI paths. Blocks path
+  // traversal (encoded dots, backslashes, ..) and any endpoint outside the
+  // UI's surface (/internal/*, /health, admin, billing webhooks, etc.).
+  if (!isSafeProxyPath(path)) {
+    return NextResponse.json({ error: 'Path not allowed' }, { status: 400 });
   }
 
   const docaiPath = `/v1/${path.join('/')}`;
