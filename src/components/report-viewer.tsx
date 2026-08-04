@@ -155,22 +155,6 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         </Card>
       )}
 
-      {/* LLM Reasoning (collapsible) */}
-      {(report as any).llmReasoning && (
-        <details className="group">
-          <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-foreground select-none py-2">
-            <span className="inline-flex items-center gap-2">
-              <span className="text-xs transition-transform group-open:rotate-90">▶</span>
-              LLM Reasoning (thinking process)
-            </span>
-          </summary>
-          <Card className="p-4 mt-2 bg-muted/50">
-            <pre className="text-xs whitespace-pre-wrap font-mono text-secondary leading-relaxed max-h-96 overflow-y-auto">
-              {(report as any).llmReasoning}
-            </pre>
-          </Card>
-        </details>
-      )}
     </div>
   );
 }

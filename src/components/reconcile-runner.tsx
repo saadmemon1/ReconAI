@@ -23,6 +23,7 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
   const [error, setError] = useState('');
   const [report, setReport] = useState<ReconciliationReport | null>(null);
   const [thinking, setThinking] = useState<string[]>([]);
+  const [thinkingOpen, setThinkingOpen] = useState(false);
   const thinkingRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
     setError('');
     setReport(null);
     setThinking([]);
+    setThinkingOpen(true); // auto-open while streaming
 
     try {
       const res = await fetch('/api/reconcile', {
@@ -136,6 +138,7 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
       setError(err.message);
     } finally {
       setRunning(false);
+      setThinkingOpen(false); // collapse when done — report starts at KPIs
     }
   };
 
@@ -196,11 +199,14 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
 
       {/* Live LLM thinking log (streamed during reconciliation) */}
       {(running || thinking.length > 0) && (
-        <Card className="p-6">
-          <h3 className="text-h3 mb-2 flex items-center gap-2">
+        <details className="group" open={thinkingOpen} onToggle={e => setThinkingOpen((e.target as HTMLDetailsElement).open)}>
+          <summary className="cursor-pointer text-h3 mb-2 flex items-center gap-2 select-none">
             LLM Thinking
-            {running && <span className="text-xs text-secondary font-normal animate-pulse">streaming…</span>}
-          </h3>
+            {running && (
+              <span className="w-2 h-2 rounded-full bg-foreground animate-pulse" aria-label="thinking" />
+            )}
+            {!running && <span className="text-xs text-secondary font-normal">({thinking.length} chunks)</span>}
+          </summary>
           <div
             ref={thinkingRef}
             className="bg-muted/50 rounded-lg p-4 max-h-72 overflow-y-auto font-mono text-xs text-secondary leading-relaxed whitespace-pre-wrap"
@@ -211,7 +217,7 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
               thinking.map((chunk, i) => <span key={i}>{chunk}</span>)
             )}
           </div>
-        </Card>
+        </details>
       )}
 
       {report && <ReportViewer report={report} />}

@@ -175,8 +175,7 @@ You MUST:
 
 ### Deduplication (IMPORTANT)
 Report each underlying discrepancy EXACTLY ONCE. The same root cause viewed from
-different document pairs (e.g. "invoice bills 16 vs GRN received 12" and "PO
-ordered 16, GRN received 12, invoice bills 16") is ONE finding, not two. If two
+different document pairs is ONE finding, not two. If two
 candidate findings have the same expected/actual quantities and the same
 documents, MERGE them into a single finding: use the most severe applicable
 severity, cite evidence from ALL involved documents, and describe the
