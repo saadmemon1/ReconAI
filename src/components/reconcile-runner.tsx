@@ -199,7 +199,7 @@ export function ReconcileRunner({ kbId }: { kbId: string }) {
 
       {/* Live LLM thinking log (streamed during reconciliation) */}
       {(running || thinking.length > 0) && (
-        <details className="group" open={thinkingOpen} onToggle={e => setThinkingOpen((e.target as HTMLDetailsElement).open)}>
+        <details className="group mb-8" open={thinkingOpen} onToggle={e => setThinkingOpen((e.target as HTMLDetailsElement).open)}>
           <summary className="cursor-pointer text-h3 mb-2 flex items-center gap-2 select-none">
             <span className="text-xs text-secondary transition-transform group-open:rotate-90">▶</span>
             LLM Thinking
