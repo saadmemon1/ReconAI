@@ -9,9 +9,13 @@ interface ModelInfo {
   available: boolean;
 }
 
-// DeepSeek cloud models — always shown in their own group, routed to the
-// DeepSeek API (provider prefix "deepseek/" → DEEPSEEK_BASE_URL + key).
-const DEEPSEEK_CLOUD: ModelInfo[] = [
+// DeepSeek cloud models — hardcoded as a fallback in case the API list omits
+// them. The API's /ai/models response ALSO includes these (provider:
+// "deepseek", e.g. deepseek/deepseek-v4-flash) — they are the cloud models,
+// NOT models served by the local LM Studio server. The selector splits by
+// provider so they land in the DeepSeek (cloud) group and route to the
+// DeepSeek API, never to LM Studio (which 400s "No models loaded").
+const DEEPSEEK_FALLBACKS: ModelInfo[] = [
   { id: 'deepseek/deepseek-v4-flash', provider: 'deepseek', name: 'DeepSeek V4 Flash', available: true },
   { id: 'deepseek/deepseek-v4-pro', provider: 'deepseek', name: 'DeepSeek V4 Pro', available: true },
 ];
@@ -25,6 +29,7 @@ export function ModelSelector({
 }) {
   const { fetchDocAI } = useAuth();
   const [lmStudioModels, setLmStudioModels] = useState<ModelInfo[]>([]);
+  const [deepseekModels, setDeepseekModels] = useState<ModelInfo[]>(DEEPSEEK_FALLBACKS);
   // Guards against the async /ai/models response overwriting a model the
   // user already picked (stale-closure bug)
   const userPicked = useRef(false);
@@ -39,17 +44,20 @@ export function ModelSelector({
           name: m.name,
           available: m.available !== false,
         }));
-        // Everything the API lists goes in the LM Studio group — INCLUDING
-        // deepseek models if the LM Studio server exposes them. Rewrite their
-        // ids to the lmstudio/ prefix so they (a) route to the LM Studio
-        // server instead of the cloud API and (b) don't collide with the
-        // cloud group's identical values (which made browsers tick the first
-        // duplicate). lmstudio/ models pass through untouched.
-        setLmStudioModels(apiModels.map(m =>
-          m.provider === 'deepseek' || m.id.startsWith('deepseek/')
-            ? { ...m, id: `lmstudio/${m.id.slice('deepseek/'.length)}`, provider: 'lmstudio' }
-            : m
-        ));
+        // Split by provider: lmstudio/* → local group, deepseek/* → cloud group
+        setLmStudioModels(apiModels.filter(m => m.provider !== 'deepseek'));
+        // Merge API deepseek models with the hardcoded fallbacks, deduped by id,
+        // preferring the fallback's pretty display name (e.g. "DeepSeek V4 Flash")
+        const apiDeepseek = apiModels.filter(m => m.provider === 'deepseek');
+        const merged: ModelInfo[] = [];
+        for (const api of apiDeepseek) {
+          const pretty = DEEPSEEK_FALLBACKS.find(fb => fb.id === api.id);
+          merged.push({ ...api, name: pretty?.name || api.name });
+        }
+        for (const fb of DEEPSEEK_FALLBACKS) {
+          if (!merged.some(m => m.id === fb.id)) merged.push(fb);
+        }
+        setDeepseekModels(merged);
         if (d.default_model_id && !value && !userPicked.current) {
           onChange(d.default_model_id);
         }
@@ -71,19 +79,17 @@ export function ModelSelector({
       {lmStudioModels.length > 0 && (
         <optgroup label="LM Studio (local)">
           {lmStudioModels.filter(m => m.available).map(m => (
-            <option key={m.id} value={m.id}>
-              {m.provider === 'deepseek' || m.id.startsWith('lmstudio/deepseek/')
-                ? `${m.name} (via LM Studio)`
-                : m.name}
-            </option>
+            <option key={m.id} value={m.id}>{m.name}</option>
           ))}
         </optgroup>
       )}
-      <optgroup label="DeepSeek (cloud)">
-        {DEEPSEEK_CLOUD.map(m => (
-          <option key={m.id} value={m.id}>{m.name}</option>
-        ))}
-      </optgroup>
+      {deepseekModels.length > 0 && (
+        <optgroup label="DeepSeek (cloud)">
+          {deepseekModels.filter(m => m.available).map(m => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </optgroup>
+      )}
     </select>
   );
 }
