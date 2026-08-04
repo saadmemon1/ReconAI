@@ -42,14 +42,14 @@ Reports are stored per-workspace under `reconai-last-report-<kbId>` so switching
 workspaces shows that workspace's report. A legacy global key
 (`reconai-last-report`) is migrated once on first run after upgrade, then removed.
 
-### Parsed-files tracking — global (for now)
-`reconai-parsed-files` keeps a global Set of file IDs whose parse has completed.
-This is intentionally **global, not per-workspace**: parse state belongs to the
-file (file IDs are globally unique UUIDs owned by exactly one workspace), so a
-per-workspace key would store identical information twice.
+### Parsed-files tracking — server-side (no localStorage)
+Parse status is NOT stored in localStorage. The file list is fetched with
+`GET /files?kb_id=...&include=processing`, and a file counts as parsed when
+`processing.latest_parse_job.status === 'completed'` (helper:
+`src/lib/file-status.ts` → `isFileParsed()`). The old `reconai-parsed-files`
+localStorage Set was removed — server status is authoritative, works across
+browsers/devices, and never goes stale (deleted files simply disappear).
 
-**Known limitation / possible future task — cleaning stale IDs:** the global Set
-grows forever and keeps IDs of files that have since been deleted. If desired
-later, add cleanup that drops IDs no longer present in any workspace's file list
-(e.g. on app load, intersect the Set with `GET /files?kb_id=...` results across
-the user's workspaces). Not implemented yet — intentionally deferred.
+Why not per-workspace: parse state belongs to the file (file IDs are globally
+unique UUIDs owned by exactly one workspace), so a per-workspace key would
+store identical information twice.
