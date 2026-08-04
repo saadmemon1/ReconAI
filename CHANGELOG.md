@@ -223,3 +223,12 @@
 - Files: workspace-manager.tsx, dashboard.tsx
 - Trash icon next to the workspace selector (visible when a workspace is selected) → confirmation dialog naming the workspace, warning ALL files are deleted irreversibly → destructive Delete Workspace button (still sends ?confirm_permanent=true). Deleted active workspace deselects.
 - Credits badge now fixed at bottom-left (z-40), always visible while scrolling.
+
+### [2026-08-04] Model selection: DeepSeek cloud only (LM Studio dormant)
+
+- Files: model-selector.tsx, reconcile-runner.tsx
+- User decision: stop using LM Studio models for reconciliation. Selector now offers only DeepSeek V4 Flash / V4 Pro (routed to api.deepseek.com with the env `DEEPSEEK_API_KEY`).
+- Runner default fallback model → `deepseek/deepseek-v4-flash`.
+- The reconcile route's `lmstudio` provider branch (URL, `reasoning_effort`, model-path handling) is left intact — easy revert if needed.
+- DeepSeek calls send `thinking: {type:"enabled"}` + `reasoning_effort:"high"` (both flash and pro support thinking) → live thinking stream shows reasoning.
+- Note: earlier commits in this area fixed (a) stale-closure auto-select overwriting user picks and (b) duplicate option values from the /ai/models response also listing deepseek models.
