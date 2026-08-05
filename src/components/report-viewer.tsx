@@ -1,6 +1,27 @@
 'use client';
+import { useState } from 'react';
+import { Eye } from 'lucide-react';
 import { ReconciliationReport, Finding, LineItem } from '@/engine/reconcile';
 import { Card } from './ui/card';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Badge } from './ui/badge';
+import { Dialog, DialogContent, DialogHeader } from './ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './ui/table';
 import {
   overbillingTone,
   recommendedPayable,
@@ -16,18 +37,41 @@ function formatCurrency(currency: string): string {
 const severityColors: Record<string, string> = {
   critical: 'text-destructive',
   high: 'text-warning',
-  medium: 'text-secondary',
+  medium: 'text-blue-600',
   low: 'text-muted-foreground',
+};
+
+// Persistent filled pills for the findings table status badges — always
+// visible (no hover dependency), with a distinct color per severity.
+const severityBadgeColors: Record<string, string> = {
+  critical: 'bg-destructive/15 text-destructive border-destructive/40',
+  high: 'bg-warning/15 text-warning border-warning/40',
+  medium: 'bg-blue-500/15 text-blue-600 border-blue-500/40',
+  low: 'bg-muted text-muted-foreground border-border',
 };
 
 export function ReportViewer({ report }: { report: ReconciliationReport }) {
   const { documentClassifications, groups, unmatchedDocuments, summary, timestamp } = report;
+  const [activeSeverities, setActiveSeverities] = useState<Set<string>>(new Set());
 
   const allFindings = groups.flatMap(g => g.findings);
   const sortedFindings = [...allFindings].sort((a, b) => {
     const order = { critical: 0, high: 1, medium: 2, low: 3 };
     return (order[a.severity] ?? 4) - (order[b.severity] ?? 4);
   });
+
+  // Severity filter: empty set = show all; clicking toggles membership
+  const toggleSeverity = (sev: string) => {
+    setActiveSeverities(prev => {
+      const next = new Set(prev);
+      if (next.has(sev)) next.delete(sev);
+      else next.add(sev);
+      return next;
+    });
+  };
+  const filteredFindings = activeSeverities.size === 0
+    ? sortedFindings
+    : sortedFindings.filter(f => activeSeverities.has(f.severity));
 
   const criticalCount = sortedFindings.filter(f => f.severity === 'critical').length;
   const highCount = sortedFindings.filter(f => f.severity === 'high').length;
@@ -83,6 +127,17 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
       <Card className="p-6">
         <h3 className="text-h3 mb-4">Summary</h3>
         <p className="text-base leading-relaxed whitespace-pre-wrap">{summary}</p>
+
+        {/* Derivation formula — rendered from our computed KPIs, not LLM prose */}
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-muted px-4 py-3 font-mono text-sm">
+          <span className="text-secondary">Recommended payable</span>
+          <span>{formatMoney(totalBilled)}</span>
+          <span className="text-secondary">−</span>
+          <span>{formatMoney(totalOverbilled)}</span>
+          <span className="text-secondary">=</span>
+          <span className="font-semibold text-success">{formatMoney(payable)}</span>
+        </div>
+
         <div className="text-xs text-secondary mt-4 space-y-1">
           <p>
             Classification: {documentClassifications.map(c => (
@@ -92,7 +147,6 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
               </span>
             ))}
           </p>
-          <p>Model: {report.modelUsed}</p>
           <p>Generated: {new Date(timestamp).toLocaleString()}</p>
         </div>
       </Card>
@@ -101,17 +155,27 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
       <Card className="p-6">
         <h3 className="text-h3 mb-4">Findings by Severity</h3>
         <div className="flex gap-4 mb-6">
-          <SeverityBadge label="Critical" count={criticalCount} severity="critical" />
-          <SeverityBadge label="High" count={highCount} severity="high" />
-          <SeverityBadge label="Medium" count={mediumCount} severity="medium" />
-          <SeverityBadge label="Low" count={lowCount} severity="low" />
+          <SeverityBadge label="Critical" count={criticalCount} severity="critical" active={activeSeverities.has('critical')} onClick={() => toggleSeverity('critical')} />
+          <SeverityBadge label="High" count={highCount} severity="high" active={activeSeverities.has('high')} onClick={() => toggleSeverity('high')} />
+          <SeverityBadge label="Medium" count={mediumCount} severity="medium" active={activeSeverities.has('medium')} onClick={() => toggleSeverity('medium')} />
+          <SeverityBadge label="Low" count={lowCount} severity="low" active={activeSeverities.has('low')} onClick={() => toggleSeverity('low')} />
         </div>
+        {activeSeverities.size > 0 && (
+          <button
+            onClick={() => setActiveSeverities(new Set())}
+            className="text-xs text-secondary underline mb-3 hover:text-foreground transition-colors"
+          >
+            Clear filter ({filteredFindings.length} shown)
+          </button>
+        )}
 
         <div className="space-y-3">
-          {sortedFindings.length === 0 ? (
-            <p className="text-sm text-secondary">No discrepancies found.</p>
+          {filteredFindings.length === 0 ? (
+            <p className="text-sm text-secondary">
+              {activeSeverities.size > 0 ? 'No findings match the selected severities.' : 'No discrepancies found.'}
+            </p>
           ) : (
-            <FindingsTable findings={sortedFindings} />
+            <FindingsTable findings={filteredFindings} />
           )}
         </div>
       </Card>
@@ -173,54 +237,165 @@ function KPIBox({ label, value, sub, tone }: {
   );
 }
 
+const FINDING_COLUMNS = ['Status', 'Doc', 'Description', 'Expected → Actual', 'Evidence'] as const;
+
 function FindingsTable({ findings }: { findings: Finding[] }) {
+  const [search, setSearch] = useState('');
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(
+    FINDING_COLUMNS.filter(c => c !== 'Doc'), // Doc hidden by default
+  );
+
+  const toggleColumn = (col: string) => {
+    setVisibleColumns(prev =>
+      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
+  };
+
+  const filtered = search.trim()
+    ? findings.filter(f =>
+        f.description.toLowerCase().includes(search.toLowerCase()) ||
+        f.document.toLowerCase().includes(search.toLowerCase()))
+    : findings;
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border">
-            <th className="text-left py-2 pr-4 font-medium">Severity</th>
-            <th className="text-left py-2 px-2 font-medium">Category</th>
-            <th className="text-left py-2 px-2 font-medium">Doc</th>
-            <th className="text-left py-2 px-2 font-medium">Description</th>
-            <th className="text-left py-2 px-2 font-medium">Expected → Actual</th>
-            <th className="text-left py-2 pl-2 font-medium">Evidence</th>
-          </tr>
-        </thead>
-        <tbody>
-          {findings.map(f => (
-            <tr key={f.id} className="border-b border-border align-top">
-              <td className={`py-3 pr-4 font-semibold uppercase text-xs ${severityColors[f.severity]}`}>
-                {f.severity}
-              </td>
-              <td className="py-3 px-2 text-xs text-secondary whitespace-nowrap">
-                {f.category.replace(/_/g, ' ')}
-              </td>
-              <td className="py-3 px-2 text-xs text-secondary font-mono">
-                {f.document}
-              </td>
-              <td className="py-3 px-2 text-base leading-relaxed">{f.description}</td>
-              <td className="py-3 px-2 text-sm text-secondary whitespace-nowrap">
-                {f.expected && f.actual ? `${f.expected} → ${f.actual}` : '-'}
-              </td>
-              <td className="py-3 pl-2">
-                {f.sourceCitations.length > 0 ? (
-                  <ul className="space-y-1">
-                    {f.sourceCitations.map((cite, i) => (
-                      <li key={i} className="text-sm text-secondary border-l-2 border-border pl-2 italic">
-                        {cite}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <span className="text-sm text-secondary">-</span>
+    <div className="rounded-lg border border-border bg-background shadow-sm">
+      {/* Sticky filter bar — pins to viewport top while the page scrolls
+          (table has NO fixed height; it grows naturally and the whole page
+          scrolls, so sticky works against the page, not an inner scrollbox) */}
+      <div className="sticky top-0 z-10 flex flex-wrap gap-4 items-center justify-between px-4 py-3 border-b border-border bg-background rounded-t-lg">
+        <div className="flex gap-2 flex-wrap">
+          <Input
+            placeholder="Filter findings..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-56"
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-secondary">{filtered.length} of {findings.length}</span>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+              Columns
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-48">
+              {FINDING_COLUMNS.map(col => (
+                <DropdownMenuCheckboxItem
+                  key={col}
+                  checked={visibleColumns.includes(col)}
+                  onCheckedChange={() => toggleColumn(col)}
+                >
+                  {col}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+      <Table className="w-full" wrapperClassName="">
+        <TableHeader className="sticky top-[61px] z-10 bg-background">
+          <TableRow className="bg-muted/50 hover:bg-muted/50">
+            {visibleColumns.includes('Status') && <TableHead className="w-[110px]">Status</TableHead>}
+            {visibleColumns.includes('Doc') && <TableHead className="w-[140px]">Doc</TableHead>}
+            {visibleColumns.includes('Description') && <TableHead>Description</TableHead>}
+            {visibleColumns.includes('Expected → Actual') && <TableHead>Expected → Actual</TableHead>}
+            {visibleColumns.includes('Evidence') && <TableHead className="w-[130px] text-right">Evidence</TableHead>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filtered.length ? (
+            filtered.map(f => (
+              <TableRow key={f.id}>
+                {visibleColumns.includes('Status') && (
+                  <TableCell className="whitespace-nowrap">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger render={<Badge variant="outline" />} className={`uppercase text-xs ${severityBadgeColors[f.severity] ?? severityBadgeColors.low}`}>
+                          {f.severity}
+                        </TooltipTrigger>
+                        <TooltipContent>{f.category.replace(/_/g, ' ')}</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </TableCell>
                 )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                {visibleColumns.includes('Doc') && (
+                  <TableCell className="whitespace-nowrap">
+                    <span className="text-xs text-secondary font-mono">{f.document}</span>
+                  </TableCell>
+                )}
+                {visibleColumns.includes('Description') && (
+                  <TableCell className="min-w-[280px] text-base leading-relaxed">{f.description}</TableCell>
+                )}
+                {visibleColumns.includes('Expected → Actual') && (
+                  <TableCell className="text-sm text-secondary">
+                    {f.expected && f.actual ? `${f.expected} → ${f.actual}` : '-'}
+                  </TableCell>
+                )}
+                {visibleColumns.includes('Evidence') && (
+                  <TableCell className="text-right whitespace-nowrap">
+                    <EvidenceButton finding={f} />
+                  </TableCell>
+                )}
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={visibleColumns.length} className="text-center py-6">
+                No results found.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
     </div>
+  );
+}
+
+function EvidenceButton({ finding }: { finding: Finding }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        disabled={finding.sourceCitations.length === 0}
+      >
+        <Eye className="h-3.5 w-3.5 mr-1" />
+        {finding.sourceCitations.length > 0 ? 'Evidences' : 'None'}
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <h4 className="text-h3">{finding.severity} — {finding.category.replace(/_/g, ' ')}</h4>
+            <p className="text-sm text-secondary">{finding.description}</p>
+            {finding.expected && finding.actual && (
+              <p className="text-sm text-secondary font-mono">
+                {finding.expected} → {finding.actual}
+              </p>
+            )}
+          </DialogHeader>
+
+          {/* Mindmap placeholder — the evidence graph will render here */}
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center">
+            <p className="text-sm text-secondary mb-1">Evidence mindmap</p>
+            <p className="text-xs text-secondary/70">
+              {finding.sourceCitations.length} source citation(s) — mindmap coming soon
+            </p>
+          </div>
+
+          {finding.sourceCitations.length > 0 && (
+            <ul className="space-y-2 max-h-56 overflow-y-auto">
+              {finding.sourceCitations.map((cite, i) => (
+                <li key={i} className="text-sm text-secondary border-l-2 border-border pl-3 italic">
+                  {cite}
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -264,13 +439,23 @@ function LineItemsTable({ lineItems, currency }: { lineItems: LineItem[]; curren
   );
 }
 
-function SeverityBadge({ label, count, severity }: { 
-  label: string; count: number; severity: string 
+function SeverityBadge({ label, count, severity, active, onClick }: { 
+  label: string; count: number; severity: string; active: boolean; onClick: () => void 
 }) {
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border bg-muted/40`}>
-      <span className={`text-sm font-semibold ${severityColors[severity]}`}>{label}</span>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={`Filter by ${label} findings`}
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all duration-150 ${
+        active
+          ? 'border-foreground bg-foreground text-background'
+          : 'bg-muted/40 border-border hover:border-foreground/50'
+      }`}
+    >
+      <span className={`text-sm font-semibold ${active ? '' : severityColors[severity]}`}>{label}</span>
       <span className="text-sm font-mono">{count}</span>
-    </div>
+    </button>
   );
 }

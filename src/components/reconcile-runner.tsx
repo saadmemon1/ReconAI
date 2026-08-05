@@ -281,6 +281,9 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
           {planTasks && (
             <AgentPlan tasks={planTasks} defaultExpanded={['reasoning']} />
           )}
+          <p className="mt-3 text-xs text-secondary">
+            Model: {reconcileRequest?.modelId || 'auto'}
+          </p>
         </details>
       )}
 
