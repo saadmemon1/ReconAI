@@ -24,6 +24,7 @@ import {
 import { resolveUploadTarget, Workspace } from '@/lib/workspace-utils';
 import { isFileParsed, FileWithProcessing } from '@/lib/file-status';
 import { ModelSelector } from './model-selector';
+import { ProgressiveFluxLoader } from './ui/progressive-flux-loader';
 
 interface FileItem extends FileWithProcessing {
   id: string;
@@ -51,7 +52,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [modelId, setModelId] = useState('');
   const [parsing, setParsing] = useState<string[]>([]);
-  const [jobStatuses, setJobStatuses] = useState<Record<string, string>>({});
+  const [jobStatuses, setJobStatuses] = useState<Record<string, { status: string; percent: number }>>({});
   const [uploading, setUploading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -232,10 +233,16 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
         const statusRes = await fetchDocAI(`/files/${fileId}/jobs/${jobId}`);
         const statusData = await statusRes.json();
         const status = statusData.status || statusData.job?.status || statusData.job_status;
-        setJobStatuses(prev => ({ ...prev, [fileId]: status }));
+        const percent = Number(statusData.percent ?? statusData.job?.percent ?? 0) || 0;
+        setJobStatuses(prev => ({ ...prev, [fileId]: { status, percent } }));
         if (status === 'completed' || status === 'failed' || status === 'cancelled') {
           clearInterval(poll);
           setParsing(prev => prev.filter(id => id !== fileId));
+          setJobStatuses(prev => {
+            const next = { ...prev };
+            delete next[fileId];
+            return next;
+          });
           if (status === 'completed') {
             markParsed([fileId]);
             window.dispatchEvent(new Event('credits-refresh'));
@@ -340,13 +347,28 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
                     {isParsed && <Badge variant="outline" className="ml-2 text-xs text-success">Parsed</Badge>}
                   </p>
                   {jobStatuses[f.id] && (
-                    <span className="text-xs text-secondary">
-                      Parse: {jobStatuses[f.id]}
-                    </span>
+                    <div className="mt-2 max-w-[260px]">
+                      <ProgressiveFluxLoader
+                        value={jobStatuses[f.id].percent}
+                        phases={[
+                          { at: 0, label: 'queued' },
+                          { at: 25, label: 'parsing' },
+                          { at: 80, label: 'finalizing' },
+                          { at: 100, label: 'done' },
+                        ]}
+                        showLabel={false}
+                        loop={false}
+                        className="max-w-none"
+                        barClassName="h-2.5"
+                      />
+                      <span className="sr-only">
+                        Parse: {jobStatuses[f.id].status}
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2 pl-1">
                 <Button variant="ghost" size="sm" onClick={() => viewFile(f.id)}>
                   View
                 </Button>
