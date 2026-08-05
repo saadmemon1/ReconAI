@@ -258,3 +258,12 @@
 - Signup submit is gated client-side: both rules must be met or the form blocks with "Password must meet: ..." before any API call — the upstream PASSWORD_TOO_SHORT should no longer surface from signup.
 - Commonly-guessed passwords are warned (amber tag) but allowed — upstream only rejects too-short passwords.
 - Signup field order: Name, Organization Name, Email, Password (+ strength meter). Sign-in unchanged.
+
+### [2026-08-04] Parse progress: flux loader bar in file rows
+
+- Files: file-manager.tsx, ui/progressive-flux-loader.tsx (new), package.json (framer-motion dep)
+- New ProgressiveFluxLoader: flux-gradient progress bar (blue→cyan→blue, sheen sweep), spring fill, reduced-motion aware, aria-valuetext announcements.
+- Job polling now reads `percent` from the parse job status endpoint; the "Parse: running" text line is replaced by a compact flux bar per file row.
+- Bar entry is deleted on terminal job state (completed/failed/cancelled) so it disappears cleanly once parsing finishes.
+- Slightly larger bar (h-2.5) + breathing room between filename, bar, and action buttons.
+- Note: Framer's "Wave Reveal Button" experiment was reverted — plain green Reconcile button restored.
