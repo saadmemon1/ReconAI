@@ -145,6 +145,36 @@ export async function POST(req: NextRequest) {
           let reasoning = '';
           let content = '';
 
+          // Progressive stage detection: as the model's reasoning text
+          // reaches each phase (compare → totals → discrepancies →
+          // findings), emit a stage event so the plan's subtasks light up
+          // in sequence. Monotonic — each stage fires once, in order.
+          const STAGES = [
+            { id: 'reasoning-2', keywords: ['compare', 'comparison', 'line item', 'line-item', ' against ', ' vs ', 'versus', 'difference', 'differ by'] },
+            { id: 'reasoning-3', keywords: ['total', 'billed', 'payable', 'subtotal', 'sum ', 'amount', 'calculate', 'computed', 'totals'] },
+            { id: 'reasoning-4', keywords: ['discrepanc', 'mismatch', 'shortage', 'overbill', 'over-bill', 'shortfall', 'excess', 'missing', 'extra'] },
+            { id: 'reasoning-5', keywords: ['finding', 'summary', 'therefore', 'overall', 'conclusion'] },
+          ];
+          let stageIdx = 0; // 0 = "Analyzing documents" (lit from the start)
+          // reasoning-6 ("Preparing report") fires only when the model STOPS
+          // reasoning and starts emitting content — the honest transition.
+          let reportStageSent = false;
+          let lastProgressSend = 0;
+
+          const maybeAdvanceStage = (text: string) => {
+            const lower = text.toLowerCase();
+            for (let i = stageIdx; i < STAGES.length; i++) {
+              if (STAGES[i].keywords.some(k => lower.includes(k))) {
+                // Light every stage up to and including the match (no gaps)
+                for (let j = stageIdx; j <= i; j++) {
+                  send({ type: 'stage', stage: STAGES[j].id });
+                }
+                stageIdx = i + 1;
+                return;
+              }
+            }
+          };
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -167,8 +197,21 @@ export async function POST(req: NextRequest) {
               if (rDelta) {
                 reasoning += rDelta;
                 send({ type: 'thinking', text: rDelta });
+                maybeAdvanceStage(reasoning);
               }
-              if (cDelta) content += cDelta;
+              if (cDelta) {
+                content += cDelta;
+                // Transition to "Preparing report" the moment content starts
+                if (!reportStageSent) {
+                  reportStageSent = true;
+                  send({ type: 'stage', stage: 'reasoning-6' });
+                }
+                // Throttled live progress so the last stage never looks stuck
+                if (content.length - lastProgressSend > 200) {
+                  lastProgressSend = content.length;
+                  send({ type: 'progress', chars: content.length });
+                }
+              }
             }
           }
 
