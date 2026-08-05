@@ -267,3 +267,12 @@
 - Bar entry is deleted on terminal job state (completed/failed/cancelled) so it disappears cleanly once parsing finishes.
 - Slightly larger bar (h-2.5) + breathing room between filename, bar, and action buttons.
 - Note: Framer's "Wave Reveal Button" experiment was reverted — plain green Reconcile button restored.
+
+### [2026-08-04] Agent-plan reconcile progress view + per-step stage events
+
+- Files: reconcile-runner.tsx, api/reconcile/route.ts, ui/agent-plan.tsx (new)
+- LLM thinking panel replaced by an animated plan: Document Retrieval (completed) → Reconciliation (live) → Report Generation.
+- Reconciliation subtasks light up progressively: the route detects phase keywords in the streamed reasoning (comparing → computing totals → flagging discrepancies → summarizing findings) and emits per-step SSE `stage` events; "Preparing report" fires when content generation actually starts (not on reasoning keywords), with throttled live char-count `progress` events so the final stage never looks stuck.
+- Streamed thinking text follows the currently-active subtask (not always the first); in-progress icons spin; header cycles reconcile synonyms ("Reconciling… Cross-checking… Matching…") with a pulsing ellipsis every 3s while running.
+- agent-plan.tsx: animated task/subtask tree (lucide-react + framer-motion, reduced-motion aware), controllable via `tasks` prop; demo data + click-to-toggle kept as fallback.
+- All stages turn green on report arrival.
