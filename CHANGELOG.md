@@ -249,3 +249,12 @@
 - The reconcile route's `lmstudio` provider branch (URL, `reasoning_effort`, model-path handling) is left intact — easy revert if needed.
 - DeepSeek calls send `thinking: {type:"enabled"}` + `reasoning_effort:"high"` (both flash and pro support thinking) → live thinking stream shows reasoning.
 - Note: earlier commits in this area fixed (a) stale-closure auto-select overwriting user picks and (b) duplicate option values from the /ai/models response also listing deepseek models.
+
+### [2026-08-04] Signup: password strength meter + client-side validation gate
+
+- Files: auth-form.tsx, ui/password-strength.tsx (new), package.json (motion dep)
+- New motion-based PasswordStrength component (spring bars, crossfade label, reduced-motion aware, aria-live announcements, "Commonly guessed" warning) added to src/components/ui/.
+- Rules trimmed per user request: only "12 characters or more" + "A number" (case/symbol requirements removed).
+- Signup submit is gated client-side: both rules must be met or the form blocks with "Password must meet: ..." before any API call — the upstream PASSWORD_TOO_SHORT should no longer surface from signup.
+- Commonly-guessed passwords are warned (amber tag) but allowed — upstream only rejects too-short passwords.
+- Signup field order: Name, Organization Name, Email, Password (+ strength meter). Sign-in unchanged.
