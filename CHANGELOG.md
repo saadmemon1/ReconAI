@@ -276,3 +276,15 @@
 - Streamed thinking text follows the currently-active subtask (not always the first); in-progress icons spin; header cycles reconcile synonyms ("Reconciling… Cross-checking… Matching…") with a pulsing ellipsis every 3s while running.
 - agent-plan.tsx: animated task/subtask tree (lucide-react + framer-motion, reduced-motion aware), controllable via `tasks` prop; demo data + click-to-toggle kept as fallback.
 - All stages turn green on report arrival.
+
+### [2026-08-04] Findings table: severity filter chips, Evidences popup, sticky layout
+
+- Files: report-viewer.tsx, ui/table.tsx (new), ui/dropdown-menu.tsx (new), ui/tooltip.tsx (new), ui/avatar.tsx (new), engine/reconcile.ts
+- Summary card: prompt now requests bulleted discrepancies; derivation formula strip rendered from computed KPIs (Billed − Overbilled = Payable); Model line moved into the collapsed Reconcile Progress panel.
+- Findings rendered as a contributors-style table: Status | Doc | Description | Expected → Actual | Evidence, with a live search filter, "N of M" count, and a Columns dropdown (Base UI menu with checkboxes; Doc hidden by default).
+- Severity badges are clickable filters (multi-select, active-inverted, Clear filter); each severity now has a persistent tinted pill (critical red / high amber / medium blue / low gray — medium no longer matches low).
+- Evidence column: "Evidences" button opens a dialog with the finding header, source citations, and a dashed placeholder for the future evidence mindmap.
+- Sticky layout: filter bar pins to viewport top, column headers stick below it (both `position: sticky` against page scroll — the table has NO fixed height and no inner scrollbox).
+- Header row keeps the hover shade (bg-muted/50) permanently; thead solid bg-background so stuck headers hide rows beneath.
+- New Base UI wrappers (table/dropdown-menu/tooltip/avatar) — the provided Radix-based demo files were ported to @base-ui/react to match the project's primitive library.
+- Expected → Actual column: no fixed width / no nowrap (wraps naturally); avatar removed from Doc column.
