@@ -304,3 +304,12 @@
 - ui/dropdown-menu.tsx: new `DropdownMenuItem` export; Positioner `side` prop passes through.
 - Popup opens side=left because the gap under the avatar ends exactly at the sticky tab bar's top edge (the tab bar's -mt-3 pulls it up 12px) — a bottom-anchored popup overlapped it by a few px.
 - globals.css: global `button, [role=button] { cursor: pointer }` rule (no button in the app showed a pointer cursor before).
+
+### [2026-08-06] Report polish: bold summary figures, whole-number amounts, Line Items header
+
+- Files: engine/reconcile.ts (prompt), lib/format-inline.ts (new) + unit tests, report-viewer.tsx, reconcile-runner.tsx
+- Prompt now instructs **bold** SPARINGLY: bold only the 3 key monetary figures (billed, overbilled, recommended payable) as complete amount phrases (e.g. `**PKR 7,200**`), never punctuation/whole lines/bullets; example JSON shows it concretely.
+- Prompt now requires whole-number amounts (no `.00`) everywhere — summary, finding expected/actual, line item prices/totals. The example JSON previously used `450.00`/`470.00`/`7200.00`, which the LLM copied verbatim into every report; example + rule now use whole numbers.
+- New `renderInlineFormatting` (lib/format-inline.ts): renders `**bold**`/`*italic*` markers as `<strong>`/`<em>`, React-escaped (no dangerouslySetInnerHTML — LLM output stays untrusted). 7 unit tests incl. HTML-injection guard.
+- Per-group line items card header changed from `group.description` (the LLM was filling it with the PDF name) to a static "Line Items"; the doc list with roles stays as the subtitle.
+- Reconcile Progress panel: the "Model:" line is hidden while running and reappears inside the collapsed section once the run finishes.
