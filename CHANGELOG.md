@@ -294,3 +294,13 @@
 - Files: dashboard.tsx, report-viewer.tsx
 - Tab bar (Files/Report) is now sticky: pins to the top of the viewport while scrolling so the active tab is always visible. `-mt-3`/`mb-3` cancel the new `py-3` so the resting layout is pixel-identical to before.
 - The findings table's sticky filter bar and column header now offset below the tab bar via a shared `--tabbar-h` CSS var set on the dashboard root (56px = h-8 button + py-3) — single source of truth if the bar ever resizes.
+
+### [2026-08-06] Profile account menu (avatar + dropdown)
+
+- Files: dashboard.tsx, auth-provider.tsx, api/auth/session/route.ts, lib/session-org.ts, lib/__tests__/session-org.test.ts, ui/dropdown-menu.tsx, globals.css
+- Top-right sign-out icon replaced by an initials avatar (black circle, white initial); clicking opens a dropdown beside it (side=left, vertically centered) showing the user name (bold), organisation name (muted), and a red "Sign out" row.
+- "Sign out" still opens the existing confirmation dialog — the single-click-can't-sign-you-out guarantee is preserved.
+- Session route returns `orgName` via new pure helper `extractOrgName` (organizations[] matched to currentOrgId, first-org fallback, nested + flat shapes; 6 new unit tests).
+- ui/dropdown-menu.tsx: new `DropdownMenuItem` export; Positioner `side` prop passes through.
+- Popup opens side=left because the gap under the avatar ends exactly at the sticky tab bar's top edge (the tab bar's -mt-3 pulls it up 12px) — a bottom-anchored popup overlapped it by a few px.
+- globals.css: global `button, [role=button] { cursor: pointer }` rule (no button in the app showed a pointer cursor before).
