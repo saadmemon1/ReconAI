@@ -1,19 +1,20 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExternalLink, Loader2, MapPin } from 'lucide-react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Button } from '@/components/ui/button';
 import type { CitationLocation, MindmapFileNode, SegmentLike } from '@/lib/evidence-utils';
-import { locateCitations, normalizeMatchText } from '@/lib/evidence-utils';
+import { extractCitationNeedle, locateCitations, normalizeMatchText } from '@/lib/evidence-utils';
 import { cn } from '@/lib/utils';
 
 // Per-session caches (re-selecting a file is instant).
 const segmentsCache = new Map<string, SegmentLike[]>();
 const pdfCache = new Map<string, Promise<PDFDocumentProxy>>();
 
-// Render the page at ~420 CSS px wide (× devicePixelRatio for crispness).
+// Render pages at ~420 CSS px wide (× devicePixelRatio for crispness).
 const RENDER_WIDTH = 420;
+const PAGE_GAP = 12; // matches the mb-3 between page cards
 
 let pdfjsPromise: Promise<typeof import('pdfjs-dist')> | null = null;
 function getPdfJs() {
@@ -43,20 +44,6 @@ async function fetchSegments(fileId: string): Promise<SegmentLike[]> {
   return segments;
 }
 
-async function getPdfDoc(fileId: string): Promise<PDFDocumentProxy> {
-  let promise = pdfCache.get(fileId);
-  if (!promise) {
-    promise = (async () => {
-      const pdfjs = await getPdfJs();
-      // One retry: the ngrok tunnel drops connections intermittently.
-      const data = await fetchWithRetry(`/api/docai/files/${fileId}/content`);
-      return pdfjs.getDocument({ data }).promise;
-    })();
-    pdfCache.set(fileId, promise);
-  }
-  return promise;
-}
-
 async function fetchWithRetry(url: string, attempts = 2): Promise<ArrayBuffer> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i++) {
@@ -72,18 +59,121 @@ async function fetchWithRetry(url: string, attempts = 2): Promise<ArrayBuffer> {
   throw lastError;
 }
 
+async function getPdfDoc(fileId: string): Promise<PDFDocumentProxy> {
+  let promise = pdfCache.get(fileId);
+  if (!promise) {
+    promise = (async () => {
+      const pdfjs = await getPdfJs();
+      // One retry: the ngrok tunnel drops connections intermittently.
+      const data = await fetchWithRetry(`/api/docai/files/${fileId}/content`);
+      return pdfjs.getDocument({ data }).promise;
+    })();
+    pdfCache.set(fileId, promise);
+  }
+  return promise;
+}
+
+type Box = { x1: number; y1: number; x2: number; y2: number };
+type TextItemLike = { str: string; transform: number[]; width: number; height: number };
+type ViewportLike = {
+  width: number;
+  height: number;
+  convertToViewportPoint: (x: number, y: number) => number[];
+};
+
+/**
+ * Find the text item matching a needle (numeric tokens first, exact then
+ * contains) and return its box as percentages of the page. The rendered
+ * PDF's own text layer is the ground truth for where text actually sits.
+ */
+function findTextBox(
+  items: TextItemLike[],
+  needle: string,
+  vp1: ViewportLike
+): Box | null {
+  const tokens = normalizeMatchText(needle)
+    .split(/\s+/)
+    .filter(t => t.length >= 2)
+    .sort((a, b) => Number(/\d/.test(b)) - Number(/\d/.test(a)) || b.length - a.length);
+  const itemBox = (item: TextItemLike): Box | null => {
+    if (!item.width || !item.height) return null;
+    const [aScale] = item.transform;
+    if (aScale <= 0) return null; // rotated/scaled text runs
+    // pdfjs v6: convertToViewportPoint returns a [x, y] tuple.
+    const bl = vp1.convertToViewportPoint(item.transform[4], item.transform[5]);
+    const tr = vp1.convertToViewportPoint(
+      item.transform[4] + item.width,
+      item.transform[5] - item.height
+    );
+    return {
+      x1: (Math.min(bl[0], tr[0]) / vp1.width) * 100,
+      y1: (Math.min(bl[1], tr[1]) / vp1.height) * 100,
+      x2: (Math.max(bl[0], tr[0]) / vp1.width) * 100,
+      y2: (Math.max(bl[1], tr[1]) / vp1.height) * 100,
+    };
+  };
+  for (const tok of tokens) {
+    const normTok = normalizeMatchText(tok);
+    // Variants: the bare number ('185,000' for '185,000.00') and a comma-
+    // stripped form — covers PDFs that split or format numbers differently.
+    const candidates = [normTok, normTok.replace(/\.\d+$/, ''), normTok.replace(/,/g, '')].filter(
+      (c, i, arr) => c.length >= 2 && arr.indexOf(c) === i
+    );
+    for (const candidate of candidates) {
+      const item =
+        items.find(it => normalizeMatchText(it.str) === candidate) ??
+        items.find(it => normalizeMatchText(it.str).includes(candidate));
+      const box = item ? itemBox(item) : null;
+      if (box) return box;
+    }
+    // Digit-equivalence: a numeric token can be split across text runs
+    // ('185,000' + '.00') or use different separators — compare digit-only
+    // forms, single item first, then adjacent pairs.
+    if (/\d/.test(normTok)) {
+      const want = normTok.replace(/[^0-9]/g, '');
+      if (want.length >= 3) {
+        for (let i = 0; i < items.length; i++) {
+          const a = items[i];
+          if (!a.width || !a.height) continue;
+          if (a.str.replace(/[^0-9]/g, '') === want) {
+            const box = itemBox(a);
+            if (box) return box;
+          }
+          const b = items[i + 1];
+          if (b && b.width && b.height && a.str.replace(/[^0-9]/g, '') + b.str.replace(/[^0-9]/g, '') === want) {
+            const ba = itemBox(a);
+            const bb = itemBox(b);
+            if (ba && bb) {
+              return {
+                x1: Math.min(ba.x1, bb.x1),
+                y1: Math.min(ba.y1, bb.y1),
+                x2: Math.max(ba.x2, bb.x2),
+                y2: Math.max(ba.y2, bb.y2),
+              };
+            }
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
 export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
   const [located, setLocated] = useState<CitationLocation[]>([]);
   const [misses, setMisses] = useState<string[]>([]);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [page, setPage] = useState<number | null>(null);
+  const [textHits, setTextHits] = useState<Array<{ key: string; citation: string; page: number; box: Box }>>([]);
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
-  // Refined highlight boxes (percentages of the rendered page) taken from the
-  // PDF's own text layer — ground truth for where text actually sits. Falls
-  // back to DocAI's boxes when the text layer can't be matched (scanned docs).
-  const [refinements, setRefinements] = useState<Record<number, { x1: number; y1: number; x2: number; y2: number }>>({});
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [numPages, setNumPages] = useState(0);
+  // Refined highlight boxes (percentages of the page) from the text layer.
+  const [refinements, setRefinements] = useState<Record<number, Box>>({});
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  // Becomes true once every page canvas has been drawn — the scroll math
+  // needs real canvas heights and must not run mid-draw.
+  const [pagesReady, setPagesReady] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pagesRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
+  const textCacheRef = useRef<Map<number, TextItemLike[]>>(new Map());
 
   // The parent remounts this component per file (key={file?.id}), so these
   // effects run once per file. All state writes happen inside a deferred
@@ -96,12 +186,16 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
         setLocated([]);
         setMisses(file.citations);
         setPdfStatus('idle');
-        setPage(null);
+        setNumPages(0);
         setRefinements({});
+        setTextHits([]);
+        setPagesReady(false);
         return;
       }
       setPdfStatus('loading');
       setRefinements({});
+      setTextHits([]);
+      setPagesReady(false);
       try {
         const segments = await fetchSegments(file.fileId);
         if (cancelled) return;
@@ -109,12 +203,9 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
         if (cancelled) return;
         setLocated(locs);
         setMisses(miss);
-        // Always show the PDF: the first located citation's page, or page 1
-        // when nothing located (highlights are a bonus, the document isn't).
-        setActiveIdx(0);
-        setPage(locs.length > 0 ? locs[0].page : 1);
-        await getPdfDoc(file.fileId); // warm the cache / surface errors
+        const doc = await getPdfDoc(file.fileId); // warm the cache / surface errors
         if (cancelled) return;
+        setNumPages(doc.numPages);
         setPdfStatus('ready');
       } catch {
         if (cancelled) return;
@@ -127,75 +218,75 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
     };
   }, [file?.id, file?.fileId]);
 
-  // Render the cited page to the canvas (imperative; overlays are % positioned).
+  // Render ALL pages (continuous scroll) and, per page: refine located
+  // boxes from the text layer, and text-locate unmatched citations — a
+  // born-digital doc's quote that segment matching missed still gets a
+  // highlight because the text is right there in the rendered PDF.
   useEffect(() => {
-    if (pdfStatus !== 'ready' || page == null || !file?.fileId || !canvasRef.current) return;
+    if (pdfStatus !== 'ready' || !file?.fileId || numPages === 0) return;
     let cancelled = false;
     const id = setTimeout(async () => {
       try {
         const doc = await getPdfDoc(file.fileId!);
-        const pdfPage = await doc.getPage(page);
-        if (cancelled) return;
-        const vp1 = pdfPage.getViewport({ scale: 1 });
         const dpr = window.devicePixelRatio || 1;
-        const renderScale = (RENDER_WIDTH * dpr) / vp1.width;
-        const viewport = pdfPage.getViewport({ scale: renderScale });
-        const canvas = canvasRef.current!;
-        canvas.width = Math.floor(viewport.width);
-        canvas.height = Math.floor(viewport.height);
-        canvas.style.width = '100%';
-        canvas.style.height = 'auto';
-        // pdfjs-dist v6: render takes the canvas element (not a 2d context).
-        await pdfPage.render({ canvas, viewport }).promise;
+        const refs: Record<number, Box> = {};
+        const hits: Array<{ key: string; citation: string; page: number; box: Box }> = [];
+        const foundMiss = new Set<number>();
 
-        // Refine highlight boxes from the rendered page's own text layer —
-        // the ground truth for where text actually sits. Isolated in its own
-        // try/catch: text extraction must NEVER fail the PDF view (scanned/
-        // handwritten docs have no text layer and fall back to DocAI boxes).
-        try {
-          const textContent = await pdfPage.getTextContent();
+        for (let p = 1; p <= numPages; p++) {
           if (cancelled) return;
-          const items: Array<{ str: string; transform: number[]; width: number; height: number }> = [];
-          for (const it of textContent.items) {
-            if ('str' in it) items.push(it);
+          const pdfPage = await doc.getPage(p);
+          const vp1 = pdfPage.getViewport({ scale: 1 });
+          const renderScale = (RENDER_WIDTH * dpr) / vp1.width;
+          const viewport = pdfPage.getViewport({ scale: renderScale });
+          const canvas = pagesRef.current.get(p);
+          if (!canvas) continue;
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          canvas.style.width = '100%';
+          canvas.style.height = 'auto';
+          // pdfjs-dist v6: render takes the canvas element (not a 2d context).
+          await pdfPage.render({ canvas, viewport }).promise;
+          if (cancelled) return;
+
+          // Text layer (cached per page). Extraction is isolated — it must
+          // never fail the view; scanned docs simply get no refinement.
+          let items = textCacheRef.current.get(p);
+          if (!items) {
+            items = [];
+            try {
+              const tc = await pdfPage.getTextContent();
+              for (const it of tc.items) {
+                if ('str' in it) items.push(it);
+              }
+            } catch {}
+            textCacheRef.current.set(p, items);
           }
-          const refs: Record<number, { x1: number; y1: number; x2: number; y2: number }> = {};
+
+          // Refine located rows on this page.
           for (let i = 0; i < located.length; i++) {
             const loc = located[i];
-            if (loc.page !== page) continue;
-            // Needle tokens, numeric values first (they're the most distinctive).
-            const tokens = (loc.needle || '')
-              .split(/\s+/)
-              .filter(t => t.length >= 2)
-              .sort((a, b) => Number(/\d/.test(b)) - Number(/\d/.test(a)) || b.length - a.length);
-            for (const tok of tokens) {
-              const normTok = normalizeMatchText(tok);
-              const item =
-                items.find(it => normalizeMatchText(it.str) === normTok) ??
-                items.find(it => normalizeMatchText(it.str).includes(normTok));
-              if (!item || !item.width || !item.height) continue;
-              const [aScale] = item.transform;
-              if (aScale <= 0) continue; // rotated/scaled text runs — keep DocAI box
-              // pdfjs v6: convertToViewportPoint returns a [x, y] tuple.
-              const bl = vp1.convertToViewportPoint(item.transform[4], item.transform[5]);
-              const tr = vp1.convertToViewportPoint(
-                item.transform[4] + item.width,
-                item.transform[5] - item.height
-              );
-              refs[i] = {
-                x1: (Math.min(bl[0], tr[0]) / vp1.width) * 100,
-                y1: (Math.min(bl[1], tr[1]) / vp1.height) * 100,
-                x2: (Math.max(bl[0], tr[0]) / vp1.width) * 100,
-                y2: (Math.max(bl[1], tr[1]) / vp1.height) * 100,
-              };
-              break;
+            if (loc.page !== p) continue;
+            const box = findTextBox(items, loc.needle, vp1);
+            if (box) refs[i] = box;
+          }
+
+          // Text-locate unmatched citations (first page that contains the
+          // quote wins).
+          for (let m = 0; m < misses.length; m++) {
+            if (foundMiss.has(m)) continue;
+            const box = findTextBox(items, extractCitationNeedle(misses[m]), vp1);
+            if (box) {
+              foundMiss.add(m);
+              hits.push({ key: `t${m}`, citation: misses[m], page: p, box });
             }
           }
-          if (cancelled) return;
-          setRefinements(refs);
-        } catch {
-          // Text layer unavailable — DocAI boxes (below) still apply.
         }
+
+        if (cancelled) return;
+        setRefinements(refs);
+        setTextHits(hits);
+        setPagesReady(true);
       } catch {
         if (cancelled) return;
         setPdfStatus('error');
@@ -205,32 +296,57 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [pdfStatus, page, located, file?.id, file?.fileId]);
+  }, [pdfStatus, numPages, located, misses, file?.id, file?.fileId]);
 
-  const activeLoc = located[activeIdx] ?? null;
+  // Unified highlight rows: matcher results (DocAI box, refined by the text
+  // layer when available) + text-located misses.
+  const rows = useMemo(
+    () => [
+      ...located.map((loc, i) => ({
+        key: `m${i}`,
+        page: loc.page,
+        box: refinements[i] ?? { x1: loc.x1 / 10, y1: loc.y1 / 10, x2: loc.x2 / 10, y2: loc.y2 / 10 },
+        label: loc.matchedText,
+      })),
+      ...textHits.map(h => ({ key: h.key, page: h.page, box: h.box, label: h.citation })),
+    ],
+    [located, textHits, refinements]
+  );
+  const activeRowKey = activeKey ?? rows[0]?.key ?? null;
 
-  // Highlight box in percentages of the rendered page: text-layer refinement
-  // when available, else the DocAI box (already divided by 10 → percent).
-  const boxFor = (loc: CitationLocation, idx: number) =>
-    refinements[idx] ?? { x1: loc.x1 / 10, y1: loc.y1 / 10, x2: loc.x2 / 10, y2: loc.y2 / 10 };
+  // Citations that are still genuinely unlocated (text-layer scan failed too).
+  const missedKeys = new Set(textHits.map(h => h.key));
+  const stillMissed = misses.filter((_, i) => !missedKeys.has(`t${i}`));
 
-  // Scroll the page area so the active highlight is centered in view
-  // (multipage documents don't require manual hunting).
+  // Scroll the stack so a row's highlight is centered. Called imperatively
+  // from the nav click (no effect-timing dependence) and from the effect
+  // for the initial/load scroll.
+  const scrollToKey = (key: string) => {
+    const row = rows.find(r => r.key === key);
+    const scroller = scrollRef.current;
+    if (!row || !scroller) return;
+    let offset = 0;
+    for (let p = 1; p < row.page; p++) {
+      offset += pagesRef.current.get(p)?.offsetHeight ?? 0;
+      offset += PAGE_GAP;
+    }
+    const canvas = pagesRef.current.get(row.page);
+    if (!canvas) return;
+    const boxMidY = (row.box.y1 + row.box.y2) / 2;
+    offset += (boxMidY / 100) * canvas.offsetHeight - scroller.clientHeight / 2;
+    // Smooth scroll (instant under prefers-reduced-motion).
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scroller.scrollTo({ top: Math.max(0, offset), behavior: reduced ? 'auto' : 'smooth' });
+  };
+
+  // Scroll the active highlight into view (across the whole page stack).
+  // Runs only after every page canvas has been drawn (pagesReady) — the
+  // offset math needs real heights.
   useEffect(() => {
-    if (pdfStatus !== 'ready' || page == null || !activeLoc || activeLoc.page !== page) return;
-    const id = setTimeout(() => {
-      const canvas = canvasRef.current;
-      const scroller = scrollRef.current;
-      if (!canvas || !scroller) return;
-      const box = boxFor(activeLoc, activeIdx);
-      // Box is a percentage of the rendered canvas.
-      const boxTop = (box.y1 / 100) * canvas.offsetHeight;
-      const boxBottom = (box.y2 / 100) * canvas.offsetHeight;
-      const boxHeight = boxBottom - boxTop;
-      scroller.scrollTop = Math.max(0, boxTop - (scroller.clientHeight - boxHeight) / 2);
-    }, 80);
+    if (pdfStatus !== 'ready' || !pagesReady || !activeRowKey) return;
+    const id = setTimeout(() => scrollToKey(activeRowKey), 200);
     return () => clearTimeout(id);
-  }, [pdfStatus, page, activeIdx, located, refinements, activeLoc]);
+  }, [pdfStatus, pagesReady, activeRowKey, rows]);
 
   return (
     <div className="flex h-[520px] flex-col overflow-hidden rounded-xl border border-border bg-muted/30">
@@ -256,45 +372,56 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
             )}
           </div>
 
-          {/* Page view with highlight overlays */}
-          <div ref={scrollRef} className="flex flex-1 items-start justify-center overflow-y-auto p-3">
-            {pdfStatus === 'loading' && <Loader2 className="mt-10 size-6 animate-spin text-secondary" />}
+          {/* Full-document scrollable page stack with highlight overlays */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-3">
+            {pdfStatus === 'loading' && <Loader2 className="mx-auto mt-10 size-6 animate-spin text-secondary" />}
             {pdfStatus === 'error' && (
-              <p className="mt-10 text-xs text-secondary">Failed to load the PDF. Open file to view it directly.</p>
+              <p className="mt-10 text-center text-xs text-secondary">Failed to load the PDF. Open file to view it directly.</p>
             )}
-            {pdfStatus === 'ready' && page != null && (
+            {pdfStatus === 'ready' && (
               <>
-                {located.length === 0 && misses.length > 0 && (
+                {stillMissed.length > 0 && (
                   <p className="mb-2 w-full max-w-[420px] rounded-md border border-border bg-background/80 px-2 py-1 text-center text-xs text-secondary">
-                    Citation not matched to a location — showing page 1
+                    {stillMissed.length} citation{stillMissed.length === 1 ? '' : 's'} not matched to a location
                   </p>
                 )}
-                <div className="relative w-full max-w-[420px] bg-white shadow-sm">
-                  <canvas ref={canvasRef} className="block h-auto w-full" />
-                  {located.map((loc, i) => {
-                    if (loc.page !== page) return null;
-                    const box = boxFor(loc, i);
-                    return (
-                      <div
-                        key={i}
-                        className={cn(
-                          'pointer-events-none absolute rounded-[2px] border-2 border-yellow-400 bg-yellow-300/40',
-                          loc === activeLoc && 'animate-pulse motion-reduce:animate-none'
-                        )}
-                        style={{
-                          left: `${box.x1}%`,
-                          top: `${box.y1}%`,
-                          width: `${box.x2 - box.x1}%`,
-                          height: `${box.y2 - box.y1}%`,
+                {Array.from({ length: numPages }, (_, i) => i + 1).map(p => {
+                  const pageRows = rows.filter(r => r.page === p);
+                  return (
+                    <div
+                      key={p}
+                      className="relative mb-3 w-full max-w-[420px] bg-white shadow-sm"
+                      style={{ marginBottom: p === numPages ? 0 : PAGE_GAP }}
+                    >
+                      <canvas
+                        ref={el => {
+                          if (el) pagesRef.current.set(p, el);
+                          else pagesRef.current.delete(p);
                         }}
+                        className="block h-auto w-full"
                       />
-                    );
-                  })}
-                </div>
+                      {pageRows.map(r => (
+                        <div
+                          key={r.key}
+                          className={cn(
+                            'pointer-events-none absolute rounded-[2px] border-2 border-yellow-400 bg-yellow-300/40',
+                            r.key === activeRowKey && 'animate-pulse motion-reduce:animate-none'
+                          )}
+                          style={{
+                            left: `${r.box.x1}%`,
+                            top: `${r.box.y1}%`,
+                            width: `${r.box.x2 - r.box.x1}%`,
+                            height: `${r.box.y2 - r.box.y1}%`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  );
+                })}
               </>
             )}
             {pdfStatus === 'idle' && (
-              <p className="mt-10 text-xs text-secondary">
+              <p className="mt-10 text-center text-xs text-secondary">
                 {file.fileId
                   ? 'No citation could be located on the document.'
                   : 'PDF unavailable for this report (legacy).'}
@@ -302,35 +429,36 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
             )}
           </div>
 
-          {/* Citation navigation — click to jump to a page + pulse its highlight */}
+          {/* Citation navigation — click to scroll to its page + pulse */}
           <div className="max-h-40 space-y-1 overflow-y-auto border-t border-border p-2">
-            {located.length === 0 && misses.length === 0 && (
+            {rows.length === 0 && misses.length === 0 && (
               <p className="px-2 py-1 text-xs text-secondary">No citations for this file.</p>
             )}
-            {located.map((loc, i) => (
+            {rows.map(r => (
               <button
-                key={i}
+                key={r.key}
                 onClick={() => {
-                  setActiveIdx(i);
-                  setPage(loc.page);
+                  setActiveKey(r.key);
+                  // Scroll immediately — do not depend on effect timing.
+                  scrollToKey(r.key);
                 }}
                 className={cn(
                   'flex w-full items-start gap-2 rounded-md border-l-2 px-2 py-1.5 text-left text-xs transition-colors',
-                  i === activeIdx
+                  r.key === activeRowKey
                     ? 'border-yellow-400 bg-yellow-50 text-foreground'
                     : 'border-border text-secondary hover:bg-muted'
                 )}
               >
                 <MapPin className="mt-0.5 size-3 shrink-0" />
                 <span className="min-w-0 flex-1">
-                  <span className="mr-1 font-mono text-secondary">p{loc.page}</span>
-                  <span className="line-clamp-2">{loc.matchedText}</span>
+                  <span className="mr-1 font-mono text-secondary">p{r.page}</span>
+                  <span className="line-clamp-2">{r.label}</span>
                 </span>
               </button>
             ))}
-            {misses.map((m, i) => (
+            {stillMissed.map((m, i) => (
               <p
-                key={`m${i}`}
+                key={`miss${i}`}
                 className="border-l-2 border-dashed border-border px-2 py-1 text-xs italic text-secondary/70"
               >
                 {m}
