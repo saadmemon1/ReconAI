@@ -340,3 +340,10 @@
 - Files: file-manager.tsx, dashboard.tsx.
 - Uploading to a workspace other than the current one (new workspace created from the upload dialog, or an existing different one selected) now switches the app there — previously files landed in the new workspace while the UI stayed on the old one.
 - Parse-poll intervals no longer capture stale kbId/loadFiles closures: they read latest values via refs and skip all state mutations on completion when the user has switched away from the parse target — previously a finishing parse could yank the file list back to the old workspace while the dropdown showed the new one. Polls are cleaned up on unmount.
+
+### [2026-08-06] Full-document PDF stack + text-layer location
+
+- Files: ui/evidence-pdf-viewer.tsx.
+- The viewer renders every page of the PDF as a continuous scrollable stack (no single-page restriction); highlights sit on whichever page they belong to. Clicking a citation scrolls the stack to that page with the box centered — smooth via `scrollTo({ behavior: 'smooth' })`, instant under `prefers-reduced-motion`. The scroll math waits for all canvases to be drawn before computing offsets.
+- The rendered PDF's text layer is now a locator as well as a refiner: citations the segment matcher missed are scanned across all pages and, if found, become clickable rows with exact glyph-level highlights. The "N citations not matched" banner and dashed list count only citations the text scan also failed on (scanned docs / text genuinely absent).
+- Text matching hardened: numeric tokens also match by digit-only equivalence, single item then adjacent pairs ("185,000" + ".00" split across runs, comma/formatting differences), plus fraction-stripped and comma-stripped variants.
