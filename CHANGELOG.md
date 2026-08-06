@@ -324,3 +324,19 @@
 - The report now carries fileIds: the engine stamps each classification's `fileId` from the caller's input order (clamped, unit-tested); legacy persisted reports just don't show the Open file button.
 - `attributeCitations` (evidence-utils): citation → file by name-stem match, then unique-role match; unmatched citations surface as a "N references not matched to a file" count bottom-right so nothing silently vanishes.
 - Tests: engine fileId stamping + out-of-range clamping; 9 attribution cases (stem, case-insensitivity, unique role, short-role false positives, ambiguity, no-match, empty).
+
+### [2026-08-06] PDF-in-node evidence viewer (cell-level highlights in the PDF)
+
+- Files: ui/evidence-pdf-viewer.tsx (new), ui/evidence-mindmap.tsx (selector mode), lib/evidence-utils.ts (locateCitation pipeline), lib/__tests__/evidence-utils-locate.test.ts (new), report-viewer.tsx (split layout), api/docai/[...path]/route.ts (binary-safe proxy), engine/reconcile.ts (citation format), package.json (pdfjs-dist).
+- The Evidences dialog (max-w-6xl) is now a split layout: the orbit is a selector on the left (centered until a node is clicked, then repositions) and a PDF viewer panel slides in on the right. No file pre-selected.
+- The viewer renders the cited page with pdf.js (lazy-loaded; worker emitted via `new URL` — Turbopack-compatible) and overlays yellow boxes on the exact cited cells. Citations are clickable and drive page switching + scroll-to-highlight; "Open file" stays as the full-doc escape hatch; the PDF fetch retries once (ngrok drops).
+- Highlight geometry, most-reliable-source-first: (1) the rendered PDF's own text layer (getTextContent) — ground truth, immune to DocAI coordinate-space variance; (2) DocAI cell bbox ×1000 (page 1000×1000 space) — pixel_bbox is NOT trusted: it equals bbox×1000 for some parses but is an unknown-DPI render-pixel space for others (invoice), which shifted/enlarged every box; (3) for "grid-estimate" tables (equal-width column guesses) column X is re-estimated from sqrt(cell text length) — validated against the projection-truth table — keeping the detected row Y; (4) segment coordinates last. Text extraction is isolated so it can never fail the PDF view — scanned/handwritten docs fall back to DocAI boxes.
+- Citation→location matching (evidence-utils): longest quoted fragment as needle; match order exact cell → segment-contains → cell fragment → row-hint fallback (numeric tokens weighted double → single best cell); "..."-truncated quotes matched order-aware. 20 unit tests incl. pixel_bbox-disagreement and grid-estimate regressions.
+- BFF proxy: binary bodies (PDF/image/octet-stream, and any .../content path) forwarded as ArrayBuffer — res.text() was corrupting PDF bytes, which broke inline rendering.
+- Prompt: mandatory citation format `"<file name>: <location hint>: '<verbatim 5-40 char quote>'"` — exact characters, no paraphrase, no "..." truncation — so quotes match document text 1:1.
+
+### [2026-08-06] Workspace switching around uploads
+
+- Files: file-manager.tsx, dashboard.tsx.
+- Uploading to a workspace other than the current one (new workspace created from the upload dialog, or an existing different one selected) now switches the app there — previously files landed in the new workspace while the UI stayed on the old one.
+- Parse-poll intervals no longer capture stale kbId/loadFiles closures: they read latest values via refs and skip all state mutations on completion when the user has switched away from the parse target — previously a finishing parse could yank the file list back to the old workspace while the dropdown showed the new one. Polls are cleaned up on unmount.
