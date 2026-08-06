@@ -43,9 +43,10 @@ function isAcceptedFile(file: File): boolean {
   return ACCEPTED_TYPES.has(file.type);
 }
 
-export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: { 
+export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onReconcile }: { 
   kbId: string; 
   onWorkspacesChanged?: () => void;
+  onSwitchWorkspace?: (id: string) => void;
   onReconcile?: (fileIds: string[], modelId: string) => void;
 }) {
   const { fetchDocAI } = useAuth();
@@ -86,6 +87,25 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
     // Sync parsed state from the authoritative server response
     setParsedIds(new Set(fileList.filter(isFileParsed).map(f => f.id)));
   };
+
+  // Latest-value refs: parse-poll intervals and async continuations outlive
+  // renders, so they must never capture a stale kbId/loadFiles (that was the
+  // "switched back to the old workspace when a doc finished parsing" bug).
+  const kbIdRef = useRef(kbId);
+  const loadFilesRef = useRef(loadFiles);
+  useEffect(() => {
+    kbIdRef.current = kbId;
+    loadFilesRef.current = loadFiles;
+  });
+  // Track active parse-poll intervals so they're cleaned up on unmount.
+  const pollersRef = useRef<Set<ReturnType<typeof setInterval>>>(new Set());
+  useEffect(
+    () => () => {
+      pollersRef.current.forEach(clearInterval);
+      pollersRef.current.clear();
+    },
+    []
+  );
 
   useEffect(() => {
     // Workspace switch: clear selection + job statuses for the previous workspace
@@ -153,6 +173,11 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
       onWorkspacesChanged?.();
     }
 
+    // Uploading to a workspace other than the current one should switch the
+    // app there (creating a new workspace from the dialog previously left
+    // the user stranded on the old one).
+    if (targetId !== kbId) onSwitchWorkspace?.(targetId);
+
     // Upload files
     const uploadedIds: string[] = [];
     for (const file of uploadFiles) {
@@ -184,7 +209,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
     // Auto-parse freshly uploaded files — users upload to reconcile, not to store
     if (uploadedIds.length > 0) {
       loadFiles();
-      bulkParse(uploadedIds);
+      bulkParse(uploadedIds, targetId);
     } else {
       loadFiles();
     }
@@ -199,8 +224,11 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
     window.open(`/api/docai/files/${fileId}/content`, '_blank');
   };
 
-  // Bulk parse: send all selected IDs at once, track jobs per file
-  const bulkParse = async (fileIds: string[]) => {
+  // Bulk parse: send all selected IDs at once, track jobs per file.
+  // targetKbId lets completion handlers know whether the user has switched
+  // workspaces mid-parse — if so, the completion must NOT touch the new
+  // workspace's state (that was the "switched back" bug).
+  const bulkParse = async (fileIds: string[], targetKbId?: string) => {
     const toParse = fileIds.filter(id => !parsedIds.has(id));
     if (toParse.length === 0) return;
     
@@ -237,6 +265,10 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
         setJobStatuses(prev => ({ ...prev, [fileId]: { status, percent } }));
         if (status === 'completed' || status === 'failed' || status === 'cancelled') {
           clearInterval(poll);
+          pollersRef.current.delete(poll);
+          // User switched workspaces while this job ran — don't clobber the
+          // new workspace's file list with a stale reload.
+          if (targetKbId && kbIdRef.current !== targetKbId) return;
           setParsing(prev => prev.filter(id => id !== fileId));
           setJobStatuses(prev => {
             const next = { ...prev };
@@ -247,9 +279,10 @@ export function FileManager({ kbId, onWorkspacesChanged, onReconcile }: {
             markParsed([fileId]);
             window.dispatchEvent(new Event('credits-refresh'));
           }
-          loadFiles();
+          loadFilesRef.current();
         }
       }, 2000);
+      pollersRef.current.add(poll);
     }
   };
 

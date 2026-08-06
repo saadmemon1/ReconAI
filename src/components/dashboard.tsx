@@ -166,7 +166,7 @@ export function Dashboard() {
             </div>
 
             <div key={tab} className="animate-crossfade">
-              {tab === 'files' && <FileManager kbId={selectedKB} onWorkspacesChanged={() => setWsRefreshKey(k => k + 1)} onReconcile={handleReconcile} />}
+              {tab === 'files' && <FileManager kbId={selectedKB} onWorkspacesChanged={() => setWsRefreshKey(k => k + 1)} onSwitchWorkspace={setSelectedKB} onReconcile={handleReconcile} />}
               {tab === 'report' && <ReconcileRunner key={selectedKB} kbId={selectedKB} reconcileRequest={reconcileRequest} />}
             </div>
           </>
