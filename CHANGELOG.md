@@ -288,3 +288,9 @@
 - Header row keeps the hover shade (bg-muted/50) permanently; thead solid bg-background so stuck headers hide rows beneath.
 - New Base UI wrappers (table/dropdown-menu/tooltip/avatar) — the provided Radix-based demo files were ported to @base-ui/react to match the project's primitive library.
 - Expected → Actual column: no fixed width / no nowrap (wraps naturally); avatar removed from Doc column.
+
+### [2026-08-06] Sticky Files/Report tab bar
+
+- Files: dashboard.tsx, report-viewer.tsx
+- Tab bar (Files/Report) is now sticky: pins to the top of the viewport while scrolling so the active tab is always visible. `-mt-3`/`mb-3` cancel the new `py-3` so the resting layout is pixel-identical to before.
+- The findings table's sticky filter bar and column header now offset below the tab bar via a shared `--tabbar-h` CSS var set on the dashboard root (56px = h-8 button + py-3) — single source of truth if the bar ever resizes.
