@@ -78,13 +78,19 @@ async function handleRequest(
     docaiOrgId: session.orgId,
   });
 
-  // Forward response
-  const responseData = await res.text();
+  // Forward response — binary-safe: text responses pass through as text,
+  // binary ones (PDF/image content) as ArrayBuffer. res.text() corrupts
+  // binary bodies (UTF-8 decode/re-encode), which broke inline PDF rendering.
+  const contentType = res.headers.get('content-type') || '';
   const responseHeaders = new Headers();
-  
-  // Copy relevant headers
-  const contentType = res.headers.get('content-type');
   if (contentType) responseHeaders.set('content-type', contentType);
+
+  const isBinary =
+    path[path.length - 1] === 'content' ||
+    contentType.includes('application/pdf') ||
+    contentType.startsWith('image/') ||
+    contentType.includes('application/octet-stream');
+  const responseData: BodyInit = isBinary ? await res.arrayBuffer() : await res.text();
 
   return new NextResponse(responseData, {
     status: res.status,

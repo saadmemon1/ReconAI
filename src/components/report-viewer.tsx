@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { Eye } from 'lucide-react';
 import { ReconciliationReport, Finding, LineItem, ReconciliationGroup, DocumentClassification } from '@/engine/reconcile';
 import { renderInlineFormatting } from '@/lib/format-inline';
+import { cn } from '@/lib/utils';
 import { attributeCitations, roleLabel, type MindmapFileNode } from '@/lib/evidence-utils';
 import { EvidenceMindmap } from './ui/evidence-mindmap';
+import { EvidencePdfViewer } from './ui/evidence-pdf-viewer';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -368,6 +370,7 @@ function EvidenceButton({ finding, group, classifications }: {
   classifications: DocumentClassification[];
 }) {
   const [open, setOpen] = useState(false);
+  const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
 
   // Build the mindmap file nodes from the finding's group + classifications,
   // then attribute each source citation to the file it mentions.
@@ -385,13 +388,22 @@ function EvidenceButton({ finding, group, classifications }: {
   for (const f of files) f.citations = byFile[f.id] || [];
   // Only files with at least one attributed citation orbit the center.
   const citedFiles = files.filter(f => f.citations.length > 0);
+  const selectedFile = citedFiles.find(f => f.id === selectedFileId) || null;
+  // The PDF panel opens only when a node is selected — orbit stays centered
+  // until then, then repositions and the viewer slides in from the right.
+  const viewerOpen = selectedFileId !== null;
 
   return (
     <>
       <Button
         variant="outline"
         size="sm"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // No file pre-selected — the viewer opens dynamically when a node
+          // is clicked in the orbit.
+          setSelectedFileId(null);
+          setOpen(true);
+        }}
         disabled={finding.sourceCitations.length === 0}
       >
         <Eye className="h-3.5 w-3.5 mr-1" />
@@ -399,11 +411,36 @@ function EvidenceButton({ finding, group, classifications }: {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        {/* sm:max-w-5xl (not plain max-w-*) — DialogContent's base sm:max-w-sm
+        {/* sm:max-w-6xl (not plain max-w-*) — DialogContent's base sm:max-w-sm
             would otherwise cap the dialog at 384px */}
-        <DialogContent className="sm:max-w-5xl">
+        <DialogContent className="sm:max-w-6xl">
           <DialogTitle className="text-h3 font-semibold leading-6">Evidences Mindmap</DialogTitle>
-          <EvidenceMindmap finding={finding} files={citedFiles} unassignedCount={unassigned.length} />
+          {/* Dynamic split: orbit centered until a node is clicked, then it
+              repositions and the PDF panel slides in on the right */}
+          <div className="flex flex-col gap-4 lg:flex-row">
+            <div
+              className={cn(
+                'transition-all duration-300',
+                viewerOpen ? 'shrink-0 lg:w-[600px]' : 'w-full'
+              )}
+            >
+              <EvidenceMindmap
+                finding={finding}
+                files={citedFiles}
+                unassignedCount={unassigned.length}
+                selectedFileId={selectedFileId}
+                onSelectFile={setSelectedFileId}
+              />
+            </div>
+            <div
+              className={cn(
+                'min-w-0 overflow-hidden transition-all duration-300',
+                viewerOpen ? 'lg:w-[520px] lg:opacity-100' : 'lg:w-0 lg:opacity-0'
+              )}
+            >
+              <EvidencePdfViewer key={selectedFileId ?? 'none'} file={selectedFile} />
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>

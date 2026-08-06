@@ -184,8 +184,27 @@ severity, cite evidence from ALL involved documents, and describe the
 discrepancy across all documents in one place. Do not create separate findings
 per document pair for the same issue.
 
-### Source Citations
-For EVERY finding, include EXACT quotes from the document text as evidence. Format as: "doc_name: line X: 'quoted text'"
+### Source Citations (IMPORTANT — exact format required)
+For EVERY finding, include EXACT quotes from the document text as evidence.
+Format each citation EXACTLY like this:
+"<document file name>: <location hint>: '<verbatim quote>'"
+
+- <document file name>: copy the file name from the [DOCUMENT N] headers
+  verbatim (e.g. "04_PO-2026-0155.pdf"). Required — the app uses it to
+  attach the citation to the right document.
+- <location hint>: short human hint, e.g. "ordered items table, row 1" or
+  "page 1, terms clause 1".
+- <verbatim quote>: a SHORT (5-40 characters) EXACT, word-for-word substring
+  copied from the document — usually the specific number, price, quantity,
+  date or clause central to the discrepancy (e.g. 'Unit Price(PKR) 470.00'
+  or 'firm and binding'). Copy the document's exact characters, punctuation
+  and spacing — do NOT paraphrase, normalize, round, or add/remove commas.
+  Never invent text that is not in the document. If the quote would be long,
+  quote only the essential fragment that contains the disputed numbers.
+  Do NOT truncate with "..." — if you must quote pieces from both ends of a
+  long row, put each piece in its own citation entry.
+
+Example: "04_PO-2026-0155.pdf: ordered items table, row 1: 'Unit Price(PKR) 450.00'"
 
 ### Tolerances
 - Price and quantity differences under ${tolerance}% of PO value are considered acceptable

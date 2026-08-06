@@ -4,24 +4,19 @@ import { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
-  ArrowRight,
-  ExternalLink,
   FileText,
   Info,
-  Link,
   type LucideIcon,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import type { Finding } from '@/engine/reconcile';
 import type { MindmapFileNode } from '@/lib/evidence-utils';
 import { cn } from '@/lib/utils';
 
 /**
- * Evidence mindmap for a finding: the finding sits at the center, the files
- * it touches orbit around it. Click a file to expand its card (role badge,
- * that file's source citations, an "Open file" deep-link, and jumps to the
- * other files). Light-theme adaptation of the radial-orbital-timeline
- * showcase — no timeline semantics (status/date/energy), reduced-motion aware.
+ * Evidence mindmap (selector mode): the finding sits at the center, the cited
+ * files orbit around it. Clicking a file rotates it to the top and selects it
+ * — the selection drives the PDF viewer panel next to the orbit (split
+ * layout). Light theme, rAF rotation, reduced-motion aware.
  */
 
 const SEVERITY_ICONS: Record<string, LucideIcon> = {
@@ -64,15 +59,17 @@ export function EvidenceMindmap({
   finding,
   files,
   unassignedCount = 0,
+  selectedFileId,
+  onSelectFile,
 }: {
   finding: Finding;
   files: MindmapFileNode[];
   unassignedCount?: number;
+  selectedFileId: number | null;
+  onSelectFile: (id: number | null) => void;
 }) {
-  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
   const [rotation, setRotation] = useState(0);
   const [autoRotate, setAutoRotate] = useState(true);
-  const [activeId, setActiveId] = useState<number | null>(null);
   const [centerInfoOpen, setCenterInfoOpen] = useState(false);
   // Reduced-motion: no auto-rotation, no ping/pulse (motion-reduce classes cover the latter).
   const [reducedMotion] = useState(
@@ -85,8 +82,8 @@ export function EvidenceMindmap({
   const SeverityIcon = SEVERITY_ICONS[finding.severity] || Info;
   const centerColors = SEVERITY_CENTER[finding.severity] || SEVERITY_CENTER.low;
 
-  // Smooth rotation via requestAnimationFrame + delta time (the showcase's
-  // fixed 50ms setInterval renders at 20fps and feels jittery).
+  // Smooth rotation via requestAnimationFrame + delta time (a fixed setInterval
+  // renders at 20fps and feels jittery).
   useEffect(() => {
     if (!autoRotate || reducedMotion) return;
     let raf = 0;
@@ -104,34 +101,16 @@ export function EvidenceMindmap({
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target === containerRef.current || target === orbitRef.current || target === ringRef.current) {
-      setExpanded({});
-      setActiveId(null);
+      onSelectFile(null);
       setAutoRotate(true);
     }
   };
 
-  const centerViewOnNode = (nodeId: number) => {
-    const idx = files.findIndex(f => f.id === nodeId);
-    if (idx === -1 || files.length === 0) return;
-    setRotation(270 - (idx / files.length) * 360);
-  };
-
-  const toggleNode = (id: number) => {
-    const wasExpanded = !!expanded[id];
-    const next: Record<number, boolean> = {};
-    for (const k of Object.keys(expanded)) next[Number(k)] = false;
-    next[id] = !wasExpanded;
-    setExpanded(next);
-    if (wasExpanded) {
-      setActiveId(null);
-      setAutoRotate(true);
-    } else {
-      setActiveId(id);
-      setAutoRotate(false);
-      // Rotate the node to the top, then the card opens DOWNWARD over the
-      // center pulse — the showcase behavior.
-      centerViewOnNode(id);
-    }
+  const handleNodeClick = (file: MindmapFileNode, index: number) => {
+    onSelectFile(file.id);
+    setAutoRotate(false);
+    // Rotate the selected node to the top.
+    if (files.length > 0) setRotation(270 - (index / files.length) * 360);
   };
 
   const position = (index: number, total: number) => {
@@ -141,7 +120,7 @@ export function EvidenceMindmap({
     const y = ORBIT_RADIUS * Math.sin(radian);
     const zIndex = Math.round(100 + 50 * Math.cos(radian));
     const opacity = Math.max(0.35, Math.min(1, 0.4 + 0.6 * ((1 + Math.sin(radian)) / 2)));
-    return { x, y, radian, zIndex, opacity };
+    return { x, y, zIndex, opacity };
   };
 
   return (
@@ -158,8 +137,7 @@ export function EvidenceMindmap({
         />
 
         {/* Center: the finding itself — severity-colored circle, caption below,
-            hover card with description + expected → actual (self-managed:
-            Base UI tooltips were unreliable inside the dialog) */}
+            hover card with description + expected → actual (self-managed) */}
         <div
           className="absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center"
           onMouseEnter={() => setCenterInfoOpen(true)}
@@ -207,35 +185,34 @@ export function EvidenceMindmap({
           )}
         </div>
 
-        {/* File nodes */}
+        {/* File nodes — click to select (drives the PDF panel) */}
         {files.length > 0 &&
           files.map((file, index) => {
             const p = position(index, files.length);
-            const isExpanded = !!expanded[file.id];
-            const isDimmed = activeId !== null && activeId !== file.id;
+            const isSelected = file.id === selectedFileId;
+            const isDimmed = selectedFileId !== null && !isSelected;
 
             return (
               <div
                 key={file.id}
-                // Transition only while rotation is frozen (the click-to-center
-                // sweep); during auto-rotation updates are per-frame and a
-                // 700ms transition would lag behind the moving target.
+                // Transition only while rotation is frozen (the select sweep);
+                // during auto-rotation updates are per-frame.
                 className={cn('absolute cursor-pointer', !autoRotate && 'transition-all duration-700')}
                 style={{
                   transform: `translate(${p.x}px, ${p.y}px)`,
-                  zIndex: isExpanded ? 200 : p.zIndex,
-                  opacity: isExpanded ? 1 : isDimmed ? 0.3 : p.opacity,
+                  zIndex: isSelected ? 200 : p.zIndex,
+                  opacity: isSelected ? 1 : isDimmed ? 0.3 : p.opacity,
                 }}
                 onClick={e => {
                   e.stopPropagation();
-                  toggleNode(file.id);
+                  handleNodeClick(file, index);
                 }}
               >
                 <div
                   className={cn(
                     'flex size-10 items-center justify-center rounded-full border-2 transition-all duration-300',
-                    isExpanded
-                      ? 'scale-150 border-primary bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                    isSelected
+                      ? 'scale-125 border-primary bg-primary text-primary-foreground shadow-lg shadow-primary/20'
                       : 'border-border bg-background text-secondary hover:border-primary hover:text-foreground'
                   )}
                 >
@@ -244,95 +221,18 @@ export function EvidenceMindmap({
                 <div
                   className={cn(
                     'absolute left-1/2 top-12 max-w-[160px] -translate-x-1/2 truncate text-center text-xs font-semibold tracking-wider transition-all duration-300',
-                    isExpanded ? 'scale-125 text-foreground' : 'text-secondary'
+                    isSelected ? 'scale-125 text-foreground' : 'text-secondary'
                   )}
                 >
                   {file.title}
                 </div>
-
-                {isExpanded && (
-                  <div className="absolute left-1/2 top-20 w-72 -translate-x-1/2">
-                    {/* Connector line between node and card */}
-                    <div className="absolute -top-3 left-1/2 h-3 w-px -translate-x-1/2 bg-border" />
-                    <div className="max-h-[200px] overflow-y-auto rounded-lg border border-border bg-card shadow-xl">
-                      <div className="px-3 py-2.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
-                            {file.role}
-                          </span>
-                          <span className="truncate font-mono text-xs text-secondary">{file.title}</span>
-                        </div>
-
-                        <div className="mt-2">
-                          {file.citations.length > 0 ? (
-                            <ul className="space-y-1.5">
-                              {file.citations.map((cite, i) => (
-                                <li
-                                  key={i}
-                                  className="border-l-2 border-border pl-2 text-xs italic leading-relaxed text-secondary"
-                                >
-                                  {cite}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-xs text-secondary/70">No direct citations for this file.</p>
-                          )}
-                        </div>
-
-                        {file.fileId && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="mt-3 w-full"
-                            onClick={e => {
-                              e.stopPropagation();
-                              window.open(`/api/docai/files/${file.fileId}/content`, '_blank');
-                            }}
-                          >
-                            <ExternalLink className="mr-1 size-3.5" />
-                            Open file
-                          </Button>
-                        )}
-
-                        {files.length > 1 && (
-                          <div className="mt-3 border-t border-border pt-2">
-                            <p className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-secondary">
-                              <Link className="size-2.5 text-secondary" />
-                              Other files in finding
-                            </p>
-                            <div className="mt-1.5 flex flex-wrap gap-1">
-                              {files
-                                .filter(o => o.id !== file.id)
-                                .map(o => (
-                                  <Button
-                                    key={o.id}
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 px-2 py-0 text-xs text-secondary hover:bg-muted hover:text-foreground"
-                                    onClick={e => {
-                                      e.stopPropagation();
-                                      toggleNode(o.id);
-                                    }}
-                                  >
-                                    {o.title}
-                                    <ArrowRight className="ml-1 size-2 text-secondary" />
-                                  </Button>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}
       </div>
 
       <p className="pointer-events-none absolute bottom-2 left-3 text-xs text-secondary/70">
-        Click a file to see its citations · click empty space to reset
+        Click a file to view its evidence · click empty space to reset
       </p>
       {unassignedCount > 0 && (
         <p className="pointer-events-none absolute bottom-2 right-3 text-xs text-secondary/70">
