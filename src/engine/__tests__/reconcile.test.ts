@@ -34,3 +34,62 @@ test('handles valid multi-group report', async () => {
   expect(result.report.unmatchedDocuments).toEqual([5]);
   expect(result.report.documentClassifications).toHaveLength(5);
 });
+
+test('stamps fileId onto classifications from the input document order', async () => {
+  const report = {
+    documentClassifications: [
+      { document: 1, type: 'purchase_order', fileName: 'po.pdf' },
+      { document: 2, type: 'invoice', fileName: 'inv.pdf' },
+      { document: 3, type: 'receipt', fileName: 'rec.pdf' },
+    ],
+    groups: [{
+      id: 'g1', documents: [1, 2, 3], description: 'Set', kpis: {
+        totalPO: 100, totalReceipt: 100, totalInvoice: 100, matchedLineItems: 3,
+        mismatchedLineItems: 0, missingLineItems: 0, extraLineItems: 0, matchRate: 100,
+        overbillingAmount: 0, unsupportedCharges: 0, evidenceGaps: 0,
+      }, findings: [], lineItems: [],
+    }],
+    unmatchedDocuments: [],
+    summary: 's',
+  };
+
+  const result = await reconcile(
+    {
+      documents: [
+        { fileId: 'FILE-A', segments: [{ index: 0, content: 'x' }], fileName: 'po.pdf' },
+        { fileId: 'FILE-B', segments: [{ index: 0, content: 'x' }], fileName: 'inv.pdf' },
+        { fileId: 'FILE-C', segments: [{ index: 0, content: 'x' }], fileName: 'rec.pdf' },
+      ],
+      modelId: 'x',
+    },
+    mockLLM(report)
+  );
+
+  expect(result.report.documentClassifications.map(c => c.fileId)).toEqual(['FILE-A', 'FILE-B', 'FILE-C']);
+});
+
+test('out-of-range classification index clamps to a safe document', async () => {
+  const report = {
+    documentClassifications: [
+      { document: 99, type: 'purchase_order', fileName: 'po.pdf' },
+      { document: -3, type: 'invoice', fileName: 'inv.pdf' },
+    ],
+    groups: [],
+    unmatchedDocuments: [],
+    summary: 's',
+  };
+
+  const result = await reconcile(
+    {
+      documents: [
+        { fileId: 'FILE-A', segments: [{ index: 0, content: 'x' }], fileName: 'a.pdf' },
+        { fileId: 'FILE-B', segments: [{ index: 0, content: 'x' }], fileName: 'b.pdf' },
+      ],
+      modelId: 'x',
+    },
+    mockLLM(report)
+  );
+
+  // 99 clamps to the last document (FILE-B), -3 clamps to the first (FILE-A).
+  expect(result.report.documentClassifications.map(c => c.fileId)).toEqual(['FILE-B', 'FILE-A']);
+});

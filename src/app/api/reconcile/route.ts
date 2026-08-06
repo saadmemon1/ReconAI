@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         type: s.title || s.type,
       }));
       
-      documents.push({ segments, fileName });
+      documents.push({ fileId, segments, fileName });
     }
 
     // Determine LLM provider and endpoint

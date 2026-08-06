@@ -1,13 +1,15 @@
 'use client';
 import { useState } from 'react';
 import { Eye } from 'lucide-react';
-import { ReconciliationReport, Finding, LineItem } from '@/engine/reconcile';
+import { ReconciliationReport, Finding, LineItem, ReconciliationGroup, DocumentClassification } from '@/engine/reconcile';
 import { renderInlineFormatting } from '@/lib/format-inline';
+import { attributeCitations, roleLabel, type MindmapFileNode } from '@/lib/evidence-utils';
+import { EvidenceMindmap } from './ui/evidence-mindmap';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
-import { Dialog, DialogContent, DialogHeader } from './ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from './ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -176,7 +178,7 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
               {activeSeverities.size > 0 ? 'No findings match the selected severities.' : 'No discrepancies found.'}
             </p>
           ) : (
-            <FindingsTable findings={filteredFindings} />
+            <FindingsTable findings={filteredFindings} groups={groups} classifications={documentClassifications} />
           )}
         </div>
       </Card>
@@ -240,10 +242,19 @@ function KPIBox({ label, value, sub, tone }: {
 
 const FINDING_COLUMNS = ['Status', 'Doc', 'Description', 'Expected → Actual', 'Evidence'] as const;
 
-function FindingsTable({ findings }: { findings: Finding[] }) {
+function FindingsTable({ findings, groups, classifications }: {
+  findings: Finding[];
+  groups: ReconciliationGroup[];
+  classifications: DocumentClassification[];
+}) {
   const [search, setSearch] = useState('');
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
-    FINDING_COLUMNS.filter(c => c !== 'Doc'), // Doc hidden by default
+    [...FINDING_COLUMNS.filter(c => c !== 'Doc')]
+  );
+
+  // Finding → group lookup (findings carry unique ids; each belongs to one group)
+  const groupByFinding = new Map<string, ReconciliationGroup>(
+    groups.flatMap(g => g.findings.map(f => [f.id, g] as const))
   );
 
   const toggleColumn = (col: string) => {
@@ -333,7 +344,7 @@ function FindingsTable({ findings }: { findings: Finding[] }) {
                 )}
                 {visibleColumns.includes('Evidence') && (
                   <TableCell className="text-right whitespace-nowrap">
-                    <EvidenceButton finding={f} />
+                    <EvidenceButton finding={f} group={groupByFinding.get(f.id) || null} classifications={classifications} />
                   </TableCell>
                 )}
               </TableRow>
@@ -351,8 +362,29 @@ function FindingsTable({ findings }: { findings: Finding[] }) {
   );
 }
 
-function EvidenceButton({ finding }: { finding: Finding }) {
+function EvidenceButton({ finding, group, classifications }: {
+  finding: Finding;
+  group: ReconciliationGroup | null;
+  classifications: DocumentClassification[];
+}) {
   const [open, setOpen] = useState(false);
+
+  // Build the mindmap file nodes from the finding's group + classifications,
+  // then attribute each source citation to the file it mentions.
+  const files: MindmapFileNode[] = (group?.documents || []).map(idx => {
+    const cls = classifications.find(c => c.document === idx);
+    return {
+      id: idx,
+      title: cls?.fileName || `Doc ${idx}`,
+      role: roleLabel(cls?.type || 'other'),
+      fileId: cls?.fileId || '',
+      citations: [],
+    };
+  });
+  const { byFile, unassigned } = attributeCitations(finding.sourceCitations, files);
+  for (const f of files) f.citations = byFile[f.id] || [];
+  // Only files with at least one attributed citation orbit the center.
+  const citedFiles = files.filter(f => f.citations.length > 0);
 
   return (
     <>
@@ -367,34 +399,11 @@ function EvidenceButton({ finding }: { finding: Finding }) {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <h4 className="text-h3">{finding.severity} — {finding.category.replace(/_/g, ' ')}</h4>
-            <p className="text-sm text-secondary">{finding.description}</p>
-            {finding.expected && finding.actual && (
-              <p className="text-sm text-secondary font-mono">
-                {finding.expected} → {finding.actual}
-              </p>
-            )}
-          </DialogHeader>
-
-          {/* Mindmap placeholder — the evidence graph will render here */}
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6 text-center">
-            <p className="text-sm text-secondary mb-1">Evidence mindmap</p>
-            <p className="text-xs text-secondary/70">
-              {finding.sourceCitations.length} source citation(s) — mindmap coming soon
-            </p>
-          </div>
-
-          {finding.sourceCitations.length > 0 && (
-            <ul className="space-y-2 max-h-56 overflow-y-auto">
-              {finding.sourceCitations.map((cite, i) => (
-                <li key={i} className="text-sm text-secondary border-l-2 border-border pl-3 italic">
-                  {cite}
-                </li>
-              ))}
-            </ul>
-          )}
+        {/* sm:max-w-5xl (not plain max-w-*) — DialogContent's base sm:max-w-sm
+            would otherwise cap the dialog at 384px */}
+        <DialogContent className="sm:max-w-5xl">
+          <DialogTitle className="text-h3 font-semibold leading-6">Evidences Mindmap</DialogTitle>
+          <EvidenceMindmap finding={finding} files={citedFiles} unassignedCount={unassigned.length} />
         </DialogContent>
       </Dialog>
     </>

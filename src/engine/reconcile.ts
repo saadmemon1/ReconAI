@@ -9,6 +9,7 @@ export interface Segment {
 }
 
 export interface ReconciliationDocument {
+  fileId?: string;  // DocAI file id — stamped onto classifications post-LLM
   segments: Segment[];
   fileName: string;
 }
@@ -73,6 +74,7 @@ export interface DocumentClassification {
   document: number;
   type: 'purchase_order' | 'receipt' | 'invoice' | 'other';
   fileName: string;
+  fileId?: string;  // stamped post-LLM from the caller's input order
 }
 
 export interface ReconciliationGroup {
@@ -350,6 +352,13 @@ export async function reconcile(
   
   // Validate
   const report = validateReport(parsed);
+  // Stamp the real DocAI file id onto each classification: the LLM only knows
+  // the 1-based document index; fileIds come from the caller's input order.
+  // (fileId is optional so legacy persisted reports and tests without it work.)
+  report.documentClassifications = report.documentClassifications.map(c => ({
+    ...c,
+    fileId: input.documents[Math.min(Math.max(c.document - 1, 0), input.documents.length - 1)]?.fileId || '',
+  }));
   report.modelUsed = input.modelId;
   report.timestamp = new Date().toISOString();
   if (reasoning) {
