@@ -32,10 +32,10 @@ DropdownMenuTrigger.displayName = "DropdownMenuTrigger";
 const DropdownMenuContent = React.forwardRef<
   React.ComponentRef<typeof MenuPrimitive.Popup>,
   React.ComponentPropsWithoutRef<typeof MenuPrimitive.Popup> &
-    Pick<MenuPrimitive.Positioner.Props, "align" | "sideOffset">
->(({ className, align = "start", sideOffset = 4, ...props }, ref) => (
+    Pick<MenuPrimitive.Positioner.Props, "align" | "side" | "sideOffset">
+>(({ className, align = "start", side = "bottom", sideOffset = 4, ...props }, ref) => (
   <MenuPrimitive.Portal>
-    <MenuPrimitive.Positioner align={align} sideOffset={sideOffset}>
+    <MenuPrimitive.Positioner align={align} side={side} sideOffset={sideOffset}>
       <MenuPrimitive.Popup
         ref={ref}
         className={cn(
@@ -76,4 +76,23 @@ const DropdownMenuCheckboxItem = React.forwardRef<
 ));
 DropdownMenuCheckboxItem.displayName = "DropdownMenuCheckboxItem";
 
-export { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger };
+const DropdownMenuItem = React.forwardRef<
+  React.ComponentRef<typeof MenuPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof MenuPrimitive.Item>
+>(({ className, children, ...props }, ref) => (
+  <MenuPrimitive.Item
+    ref={ref}
+    className={cn(
+      "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none transition-colors",
+      "data-highlighted:bg-muted data-highlighted:text-foreground",
+      "data-disabled:pointer-events-none data-disabled:opacity-50",
+      className,
+    )}
+    {...props}
+  >
+    {children}
+  </MenuPrimitive.Item>
+));
+DropdownMenuItem.displayName = "DropdownMenuItem";
+
+export { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger };

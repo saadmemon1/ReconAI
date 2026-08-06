@@ -8,6 +8,32 @@ export function extractOrgId(data: unknown): string {
   return typeof orgId === 'string' ? orgId : '';
 }
 
+interface SessionOrg {
+  id?: unknown;
+  name?: unknown;
+}
+
+/**
+ * Extract the current organization's display name from a DocAI session
+ * response: the org in `organizations[]` whose id matches `currentOrgId`,
+ * falling back to the first org when the id is absent or unmatched.
+ */
+export function extractOrgName(data: unknown): string {
+  if (!data || typeof data !== 'object') return '';
+  const d = data as { session?: { organizations?: unknown; currentOrgId?: unknown }; organizations?: unknown; currentOrgId?: unknown };
+  const orgs = Array.isArray(d.session?.organizations)
+    ? (d.session.organizations as SessionOrg[])
+    : Array.isArray(d.organizations)
+      ? (d.organizations as SessionOrg[])
+      : [];
+  const orgId = d.session?.currentOrgId ?? d.currentOrgId;
+  const current = typeof orgId === 'string'
+    ? orgs.find(o => o.id === orgId)
+    : undefined;
+  const name = (current ?? orgs[0])?.name;
+  return typeof name === 'string' ? name : '';
+}
+
 /**
  * Fetch the user's current organization id from DocAI's session endpoint.
  * Used right after sign-in/sign-up so the encrypted JWT can carry a real

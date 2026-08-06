@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { decryptDocAISession, encryptDocAISession, COOKIE_NAME, getSessionCookieHeader } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
+import { extractOrgName } from '@/lib/session-org';
 
 export async function GET(req: NextRequest) {
   const encrypted = req.cookies.get(COOKIE_NAME)?.value;
@@ -30,6 +31,7 @@ export async function GET(req: NextRequest) {
     authenticated: true,
     user: s.user,
     orgId: s.currentOrgId,
+    orgName: extractOrgName(data),
     organizations: s.organizations,
     knowledgeBases: s.knowledgeBases,
     currentKnowledgeBaseId: s.currentKnowledgeBaseId,

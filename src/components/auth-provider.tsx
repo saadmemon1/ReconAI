@@ -5,6 +5,7 @@ interface AuthState {
   authenticated: boolean;
   user: { email?: string; name?: string } | null;
   orgId: string | null;
+  orgName: string | null;
   currentKnowledgeBaseId: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
@@ -20,6 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authenticated: false,
     user: null as { email?: string; name?: string } | null,
     orgId: null as string | null,
+    orgName: null as string | null,
     currentKnowledgeBaseId: null as string | null,
     loading: true,
   });
@@ -37,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           authenticated: true,
           user: data.user || null,
           orgId: data.orgId || null,
+          orgName: data.orgName || null,
           currentKnowledgeBaseId: data.currentKnowledgeBaseId || null,
           loading: false,
         });
@@ -80,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await fetch('/api/auth/signout', { method: 'POST' });
-    setState({ authenticated: false, user: null, orgId: null, currentKnowledgeBaseId: null, loading: false });
+    setState({ authenticated: false, user: null, orgId: null, orgName: null, currentKnowledgeBaseId: null, loading: false });
   };
 
   const fetchDocAI = (path: string, options?: RequestInit) => {

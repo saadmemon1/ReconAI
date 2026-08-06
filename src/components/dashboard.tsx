@@ -5,6 +5,14 @@ import { WorkspaceManager } from './workspace-manager';
 import { FileManager } from './file-manager';
 import { ReconcileRunner } from './reconcile-runner';
 import { Button } from './ui/button';
+import { Avatar, AvatarFallback } from './ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import { Separator } from './ui/separator';
 import {
   Dialog,
   DialogContent,
@@ -25,12 +33,20 @@ export interface ReconcileRequest {
 }
 
 export function Dashboard() {
-  const { signOut } = useAuth();
+  const { signOut, user, orgName } = useAuth();
   const [tab, setTab] = useState<Tab>('files');
   const [selectedKB, setSelectedKB] = useState<string | null>(null);
   const [wsRefreshKey, setWsRefreshKey] = useState(0);
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [reconcileRequest, setReconcileRequest] = useState<ReconcileRequest | null>(null);
+
+  // Avatar initials: from the user's name, else the email's first letter.
+  const displayName = user?.name?.trim() || user?.email || '';
+  const initials = (displayName || '?')
+    .split(/\s+/)
+    .map(part => part[0]?.toUpperCase() || '')
+    .join('')
+    .slice(0, 2);
 
   const handleReconcile = (fileIds: string[], modelId: string) => {
     setReconcileRequest({ fileIds, modelId, nonce: Date.now() });
@@ -48,38 +64,69 @@ export function Dashboard() {
       {/* Header */}
       <header className="border-b border-border px-8 py-4 flex items-center justify-between">
         <h1 className="text-h2">ReconAI</h1>
-        <Dialog open={signOutOpen} onOpenChange={setSignOutOpen}>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Sign out"
-            title="Sign out"
-            className="w-9 h-9"
-            onClick={() => setSignOutOpen(true)}
-          >
-            <LogOut className="w-4 h-4" />
-          </Button>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Sign out of ReconAI?</DialogTitle>
-              <DialogDescription>
-                You will need to sign in again to access your workspaces and reports.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="ghost" onClick={() => setSignOutOpen(false)}>Cancel</Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
               <Button
-                onClick={() => {
-                  setSignOutOpen(false);
-                  signOut();
-                }}
-              >
-                Sign Out
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+                variant="ghost"
+                size="icon"
+                className="w-9 h-9 rounded-full cursor-pointer"
+                aria-label="Account menu"
+                title="Account"
+              />
+            }
+          >
+            <Avatar className="size-8">
+              <AvatarFallback className="bg-primary text-primary-foreground text-sm">{initials || '?'}</AvatarFallback>
+            </Avatar>
+          </DropdownMenuTrigger>
+          {/* side="left": opens beside the avatar over the header's empty right
+              side — the cramped gap under the avatar ends right at the sticky
+              tab bar's top edge, so a bottom-anchored popup would overlap it */}
+          <DropdownMenuContent align="center" side="left" className="w-56">
+            <div className="px-3 py-2.5">
+              <p className="truncate text-sm font-medium text-foreground">
+                {displayName || 'Account'}
+              </p>
+              {orgName && (
+                <p className="mt-0.5 truncate text-xs text-secondary">{orgName}</p>
+              )}
+            </div>
+            <Separator className="my-1" />
+            <DropdownMenuItem
+              className="text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
+              onClick={() => setSignOutOpen(true)}
+            >
+              <LogOut className="size-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
+
+      {/* Sign-out confirmation — opened from the account menu; keeps the
+          single-click-can't-sign-you-out guarantee */}
+      <Dialog open={signOutOpen} onOpenChange={setSignOutOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign out of ReconAI?</DialogTitle>
+            <DialogDescription>
+              You will need to sign in again to access your workspaces and reports.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSignOutOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                setSignOutOpen(false);
+                signOut();
+              }}
+            >
+              Sign Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Body */}
       <div className="flex-1 w-full max-w-6xl mx-auto px-8 py-8">

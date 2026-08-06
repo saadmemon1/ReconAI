@@ -77,6 +77,12 @@ label {
   transition: all 150ms ease-out;
 }
 
+/* Pointer cursor for interactive controls */
+button,
+[role="button"] {
+  cursor: pointer;
+}
+
 /* Ring offset fix for rounded cards with ring */
 .ring-offset-background {
   --tw-ring-offset-width: 2px;
