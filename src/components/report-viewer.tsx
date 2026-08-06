@@ -258,10 +258,11 @@ function FindingsTable({ findings }: { findings: Finding[] }) {
 
   return (
     <div className="rounded-lg border border-border bg-background shadow-sm">
-      {/* Sticky filter bar — pins to viewport top while the page scrolls
-          (table has NO fixed height; it grows naturally and the whole page
-          scrolls, so sticky works against the page, not an inner scrollbox) */}
-      <div className="sticky top-0 z-10 flex flex-wrap gap-4 items-center justify-between px-4 py-3 border-b border-border bg-background rounded-t-lg">
+      {/* Sticky filter bar — pins just below the sticky tab bar (--tabbar-h)
+          while the page scrolls (table has NO fixed height; it grows naturally
+          and the whole page scrolls, so sticky works against the page, not an
+          inner scrollbox) */}
+      <div className="sticky top-[var(--tabbar-h)] z-10 flex flex-wrap gap-4 items-center justify-between px-4 py-3 border-b border-border bg-background rounded-t-lg">
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Filter findings..."
@@ -291,7 +292,7 @@ function FindingsTable({ findings }: { findings: Finding[] }) {
         </div>
       </div>
       <Table className="w-full" wrapperClassName="">
-        <TableHeader className="sticky top-[61px] z-10 bg-background">
+        <TableHeader className="sticky top-[calc(var(--tabbar-h)+61px)] z-10 bg-background">
           <TableRow className="bg-muted/50 hover:bg-muted/50">
             {visibleColumns.includes('Status') && <TableHead className="w-[110px]">Status</TableHead>}
             {visibleColumns.includes('Doc') && <TableHead className="w-[140px]">Doc</TableHead>}

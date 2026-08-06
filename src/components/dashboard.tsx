@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from './ui/dialog';
 import { LogOut } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 
 type Tab = 'files' | 'report';
 
@@ -38,7 +38,13 @@ export function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div
+      className="min-h-screen bg-background flex flex-col"
+      // --tabbar-h = height of the sticky tab bar (h-8 button 32px + py-3 24px).
+      // The findings table's sticky filter bar/header in report-viewer offset
+      // below it via this var — single source of truth if the bar resizes.
+      style={{ '--tabbar-h': '56px' } as CSSProperties}
+    >
       {/* Header */}
       <header className="border-b border-border px-8 py-4 flex items-center justify-between">
         <h1 className="text-h2">ReconAI</h1>
@@ -91,8 +97,10 @@ export function Dashboard() {
 
         {selectedKB && (
           <>
-            {/* Tabs */}
-            <div className="flex gap-2 mb-6">
+            {/* Tabs — sticky: pinned to the top of the viewport while scrolling
+                so the active tab stays visible. -mt-3/mb-3 cancel out the py-3
+                so the resting layout is pixel-identical to before. */}
+            <div className="sticky top-0 z-30 bg-background py-3 -mt-3 mb-3 flex gap-2">
               <Button 
                 variant={tab === 'files' ? 'default' : 'ghost'}
                 onClick={() => setTab('files')}
