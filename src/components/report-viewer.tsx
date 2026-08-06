@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Eye } from 'lucide-react';
 import { ReconciliationReport, Finding, LineItem } from '@/engine/reconcile';
+import { renderInlineFormatting } from '@/lib/format-inline';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -126,7 +127,7 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
       {/* Summary (executive summary, directly under KPIs) */}
       <Card className="p-6">
         <h3 className="text-h3 mb-4">Summary</h3>
-        <p className="text-base leading-relaxed whitespace-pre-wrap">{summary}</p>
+        <p className="text-base leading-relaxed whitespace-pre-wrap">{renderInlineFormatting(summary)}</p>
 
         {/* Derivation formula — rendered from our computed KPIs, not LLM prose */}
         <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-muted px-4 py-3 font-mono text-sm">
@@ -184,7 +185,7 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
       {groups.map((group, gi) => (
         <div key={group.id} className="animate-fade-up" style={{ animationDelay: `${gi * 60}ms` }}>
           <Card className="p-6">
-          <h3 className="text-h3 mb-1">{group.description}</h3>
+          <h3 className="text-h3 mb-1">Line Items</h3>
           <p className="text-xs text-secondary mb-4">
             {group.documents.map(d => {
               const cls = documentClassifications.find(c => c.document === d);
