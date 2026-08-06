@@ -313,3 +313,14 @@
 - New `renderInlineFormatting` (lib/format-inline.ts): renders `**bold**`/`*italic*` markers as `<strong>`/`<em>`, React-escaped (no dangerouslySetInnerHTML — LLM output stays untrusted). 7 unit tests incl. HTML-injection guard.
 - Per-group line items card header changed from `group.description` (the LLM was filling it with the PDF name) to a static "Line Items"; the doc list with roles stays as the subtitle.
 - Reconcile Progress panel: the "Model:" line is hidden while running and reappears inside the collapsed section once the run finishes.
+
+### [2026-08-06] Evidence mindmap (which files a finding cites)
+
+- Files: ui/evidence-mindmap.tsx (new), lib/evidence-utils.ts (new) + tests, report-viewer.tsx, engine/reconcile.ts, api/reconcile/route.ts, reconcile.test.ts
+- The Evidences dialog (max-w-5xl, header "Evidences Mindmap") now shows an orbital widget instead of the placeholder + header block + flat citation list.
+- Center = the finding: severity-colored pulsing circle (red/amber/blue/gray, same palette as the table pills), a "SEVERITY · CATEGORY" caption, and a hover card with the description + expected → actual (self-managed hover, Base UI tooltips were unreliable inside the dialog).
+- Satellites = only files with ≥1 attributed citation. Clicking one rotates it to the top and opens a card: role badge (PO/RECEIPT/INVOICE), that file's citations, an "Open file" button (deep-links to the real PDF via /api/docai/files/{id}/content), and jump buttons to the other cited files.
+- Rotation: rAF + delta-time (smooth 60fps, same 6°/s); the 700ms transition applies only while frozen (click-to-center sweep) — the showcase's 50ms setInterval + always-on transition caused lag/jitter. Reduced-motion disables rotation and ping/pulse.
+- The report now carries fileIds: the engine stamps each classification's `fileId` from the caller's input order (clamped, unit-tested); legacy persisted reports just don't show the Open file button.
+- `attributeCitations` (evidence-utils): citation → file by name-stem match, then unique-role match; unmatched citations surface as a "N references not matched to a file" count bottom-right so nothing silently vanishes.
+- Tests: engine fileId stamping + out-of-range clamping; 9 attribution cases (stem, case-insensitivity, unique role, short-role false positives, ambiguity, no-match, empty).
