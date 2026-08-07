@@ -372,3 +372,10 @@
 - Profile button (avatar + name) sits at the rail bottom with a click target that reaches the rail edges; the account menu opens upward and holds identity, credits (plain text row — the pill badge is gone), and Sign out behind a visible hairline.
 - DropdownMenu z-index moved to the Positioner (portaled menus now stack above sticky siblings); Separator got explicit h-px/w-px — the old data-horizontal:* variants matched nothing, so every divider app-wide rendered 0px tall and invisible.
 - Workspaces: the most recent one auto-opens on login/reload instead of an empty selection.
+
+### [2026-08-07] Payable derivation is engine-computed; line-items table paused
+
+- Files: engine/reconcile.ts, lib/format-inline.ts, components/report-viewer.tsx + tests.
+- The LLM no longer does payable arithmetic: the summary contract forbids stating totals/overbilling/payable, and the engine computes Billed (Σ totalInvoice) − Overbilled (Σ overbilling + unsupported charges) = Recommended payable (clamped ≥ 0) from the sanitized KPIs, stripping any derivation the model writes anyway. Summary and KPI cards can no longer disagree.
+- The derivation line is engine-formatted with bold + color tokens (**[danger]** red / **[success]** green) via format-inline.ts; the redundant client-side derivation strip under the summary was removed.
+- The line-items section (fixed PO/Rec/Inv columns) is commented out, pending the dynamic-columns rework for non-purchase documents (e.g. logistics).
