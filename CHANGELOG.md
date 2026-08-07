@@ -355,3 +355,4 @@
 - A' pane mode: each pane renders only the pages carrying highlights, auto-centered on the active highlight; an "All pages" toggle expands to the full-document stack. Text-layer location moved to the load effect (once per file); the render effect draws only visible pages.
 - Multi-stage zoom (1×/2×/3×) per pane: header +/− controls, or click the active highlight to zoom in. Pages re-render at scale (crisp) and the view re-centers on the box on both axes when the page overflows. Fixed the max-w-[420px] clamp that silently capped zoom growth.
 - 3-up header compaction: Open file is icon-only (tooltip), mode toggle compact.
+- Zoom centering fix: the scroll effect depends on zoom directly and retries once after a frame — a 3× canvas repaint can swallow a smooth scroll (Safari), so the highlight now always lands centered at every zoom level.
