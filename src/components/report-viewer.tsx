@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Eye } from 'lucide-react';
-import { ReconciliationReport, Finding, LineItem, ReconciliationGroup, DocumentClassification } from '@/engine/reconcile';
+import { ReconciliationReport, Finding, /* LineItem (disabled with the line-items table), */ ReconciliationGroup, DocumentClassification } from '@/engine/reconcile';
 import { renderInlineFormatting } from '@/lib/format-inline';
 import { cn } from '@/lib/utils';
 import { attributeCitations, roleLabel, type MindmapFileNode } from '@/lib/evidence-utils';
@@ -133,16 +133,6 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         <h3 className="text-h3 mb-4">Summary</h3>
         <p className="text-base leading-relaxed whitespace-pre-wrap">{renderInlineFormatting(summary)}</p>
 
-        {/* Derivation formula — rendered from our computed KPIs, not LLM prose */}
-        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-muted px-4 py-3 font-mono text-sm">
-          <span className="text-secondary">Recommended payable</span>
-          <span>{formatMoney(totalBilled)}</span>
-          <span className="text-secondary">−</span>
-          <span>{formatMoney(totalOverbilled)}</span>
-          <span className="text-secondary">=</span>
-          <span className="font-semibold text-success">{formatMoney(payable)}</span>
-        </div>
-
         <div className="text-xs text-secondary mt-4 space-y-1">
           <p>
             Classification: {documentClassifications.map(c => (
@@ -185,7 +175,10 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         </div>
       </Card>
 
-      {/* Per-Group Line Items */}
+      {/* Per-Group Line Items — TEMPORARILY DISABLED: the fixed 3-way column
+          set (PO/Rec/Inv) doesn't fit non-purchase docs (e.g. logistics).
+          Being reworked as a dynamic-columns table; see the LineItemsTable
+          component below (also commented out).
       {groups.map((group, gi) => (
         <div key={group.id} className="animate-fade-up" style={{ animationDelay: `${gi * 60}ms` }}>
           <Card className="p-6">
@@ -200,6 +193,7 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
           </Card>
         </div>
       ))}
+      */}
 
       {/* Unmatched */}
       {unmatchedDocuments.length > 0 && (
@@ -495,6 +489,8 @@ function EvidenceButton({ finding, group, classifications }: {
   );
 }
 
+/* LineItemsTable — TEMPORARILY DISABLED with the line-items section above;
+   being reworked into a manifest-driven dynamic-columns table.
 function LineItemsTable({ lineItems, currency }: { lineItems: LineItem[]; currency: string }) {
   const fmt = (n: number) => `${formatCurrency(currency)}${n.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
   return (
@@ -534,6 +530,7 @@ function LineItemsTable({ lineItems, currency }: { lineItems: LineItem[]; curren
     </div>
   );
 }
+*/
 
 function SeverityBadge({ label, count, severity, active, onClick }: { 
   label: string; count: number; severity: string; active: boolean; onClick: () => void 

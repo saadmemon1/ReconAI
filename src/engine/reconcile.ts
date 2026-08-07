@@ -1,6 +1,6 @@
 // === Types ===
 
-import { sanitizeKPIs } from '@/lib/kpi-utils';
+import { sanitizeKPIs, recommendedPayable } from '@/lib/kpi-utils';
 
 export interface Segment {
   index: number;
@@ -273,9 +273,9 @@ IMPORTANT: Use EXACTLY these field names. For lineItems, MERGE matching items ac
 
 The "currency" field MUST be the ISO currency code detected from the documents (e.g. PKR, USD, EUR). Detect it from currency symbols or codes in the document text. Never invent one.
 
-The "summary" MUST include: (1) how many documents were grouped, (2) the key discrepancies found — list each discrepancy on its own short bullet line starting with "- " (e.g. "- Invoice bills 16 mugs vs 12 received"), and (3) the derivation of the recommended payable: state the billed total, the total overbilled (overbilling + unsupported charges), and the resulting recommended payable (billed − overbilled). Show the calculation explicitly with numbers, e.g. "Billed PKR 8,874 − Overbilled PKR 1,674 = Recommended payable PKR 7,200". Keep the whole summary compact — no filler sentences.
+The "summary" MUST include: (1) how many documents were grouped, and (2) the key discrepancies found — list each discrepancy on its own short bullet line starting with "- " (e.g. "- Invoice bills 16 mugs vs 12 received"). Do NOT compute or state any totals, overbilling amounts, or the recommended payable in the summary — the application derives those figures from the structured "kpis" object and appends them automatically. Keep the whole summary compact — no filler sentences.
 
-Formatting: use **bold** SPARINGLY — bold ONLY the key monetary figures (the billed total, the total overbilled, and the recommended payable). Bold the complete amount phrase including the currency code, e.g. **PKR 7,200**. Never bold punctuation, a whole line, or a bullet prefix. At most 3 bold spans in the entire summary. No other formatting: no italics, no headings, no code blocks.
+Formatting: use **bold** SPARINGLY — bold only key monetary figures in the bullets (e.g. "- Invoice unit price **PKR 470** vs PO agreed **PKR 450**"), at most 3 bold spans in total. No italics, no headings, no code blocks. Never write or bold the derivation line — the application writes and formats it automatically.
 
 All monetary amounts are whole numbers with NO decimals or trailing .00 — e.g. PKR 8,874 or 450, never PKR 8,874.00 or 450.00. This applies everywhere: the summary, finding expected/actual values, and line item prices/totals.
 
@@ -331,6 +331,42 @@ function validateReport(data: unknown): ReconciliationReport {
   return r;
 }
 
+// === Payable derivation (engine-authored) ===
+
+/** Whole numbers with thousands separators — the report's money convention. */
+function formatWhole(n: number): string {
+  return Math.round(n).toLocaleString('en-US');
+}
+
+/**
+ * Replace/append the "Billed − Overbilled = Recommended payable" line in the
+ * summary, computed from the report's structured KPIs. The LLM no longer
+ * performs this arithmetic (its prose sums drifted from the kpis object), so
+ * any derivation line the model wrote anyway is stripped and replaced with
+ * ours — the engine is the single source of truth for this figure.
+ */
+function withPayableDerivation(summary: string, report: ReconciliationReport): string {
+  const billed = report.groups.reduce((s, g) => s + (g.kpis.totalInvoice || 0), 0);
+  const overbilling = report.groups.reduce((s, g) => s + (g.kpis.overbillingAmount || 0), 0);
+  const unsupported = report.groups.reduce((s, g) => s + (g.kpis.unsupportedCharges || 0), 0);
+  const overbilled = overbilling + unsupported;
+  const payable = recommendedPayable(billed, overbilling, unsupported);
+  const cur = report.currency ? `${report.currency} ` : '';
+  // Bold + color tokens — renderInlineFormatting maps **[danger]** /
+  // **[success]** to the destructive/success text colors: billed is neutral,
+  // overbilled is red (money lost), payable is green (net figure).
+  const line = `Billed **${cur}${formatWhole(billed)}** − Overbilled **[danger]${cur}${formatWhole(overbilled)}** = Recommended payable **[success]${cur}${formatWhole(payable)}**`;
+
+  // Strip any LLM-written derivation (old prompt habit), then clean the gaps.
+  const cleaned = summary
+    .replace(/Billed\s+.*?Recommended payable[^\n]*/gi, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return cleaned ? `${cleaned}\n\n${line}` : line;
+}
+
 // === Main Engine ===
 
 export async function reconcile(
@@ -380,6 +416,8 @@ export async function reconcile(
   }));
   report.modelUsed = input.modelId;
   report.timestamp = new Date().toISOString();
+  // Engine-authored payable derivation — the LLM no longer writes this line.
+  report.summary = withPayableDerivation(report.summary, report);
   if (reasoning) {
     (report as ReconciliationReport & { llmReasoning?: string }).llmReasoning = reasoning;
   }

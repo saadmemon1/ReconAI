@@ -11,6 +11,15 @@ describe('renderInlineFormatting (summary **bold** rendering)', () => {
     expect(html).toBe('<div>Recommended payable <strong>PKR 7,200</strong>. Read it.</div>');
   });
 
+  test('renders **[danger]** / **[success]** color tokens as colored <strong>', () => {
+    const html = renderToStaticMarkup(
+      createElement('div', null, renderInlineFormatting('Billed **PKR 7,520** − Overbilled **[danger]PKR 320** = Recommended payable **[success]PKR 7,200**'))
+    );
+    expect(html).toBe(
+      '<div>Billed <strong>PKR 7,520</strong> − Overbilled <strong class="text-destructive">PKR 320</strong> = Recommended payable <strong class="text-success">PKR 7,200</strong></div>'
+    );
+  });
+
   test('converts *italic* spans to <em>', () => {
     const html = renderToStaticMarkup(
       createElement('div', null, renderInlineFormatting('emphasised *word* here'))
