@@ -364,3 +364,11 @@
 - The sign-in/sign-up card floats centered over the grid with the "ReconAI" header; fixed a regression where the card collapsed to its content width (the grid's content wrapper is now full-width + centered).
 - Removed the earlier dithering-shader experiment (ditched per review).
 - The dashboard's "ReconAI" wordmark is now clickable and switches to the Files tab from any tab.
+
+### [2026-08-07] Vertical sidebar: tubelight tabs + profile popup
+
+- Files: ui/tubelight-navbar.tsx (new), dashboard.tsx, ui/dropdown-menu.tsx, ui/separator.tsx, credit-display.tsx, workspace-manager.tsx, package.json (framer-motion).
+- The Files/Report tabs moved from the top strip into a sticky left rail (vertical): framer-motion tubelight lamp slides between items, wordmark on top, icon-only rail on mobile.
+- Profile button (avatar + name) sits at the rail bottom with a click target that reaches the rail edges; the account menu opens upward and holds identity, credits (plain text row — the pill badge is gone), and Sign out behind a visible hairline.
+- DropdownMenu z-index moved to the Positioner (portaled menus now stack above sticky siblings); Separator got explicit h-px/w-px — the old data-horizontal:* variants matched nothing, so every divider app-wide rendered 0px tall and invisible.
+- Workspaces: the most recent one auto-opens on login/reload instead of an empty selection.
