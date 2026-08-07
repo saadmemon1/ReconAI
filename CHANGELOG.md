@@ -356,3 +356,11 @@
 - Multi-stage zoom (1×/2×/3×) per pane: header +/− controls, or click the active highlight to zoom in. Pages re-render at scale (crisp) and the view re-centers on the box on both axes when the page overflows. Fixed the max-w-[420px] clamp that silently capped zoom growth.
 - 3-up header compaction: Open file is icon-only (tooltip), mode toggle compact.
 - Zoom centering fix: the scroll effect depends on zoom directly and retries once after a frame — a 3× canvas repaint can swallow a smooth scroll (Safari), so the highlight now always lands centered at every zoom level.
+
+### [2026-08-06] Auth screen revamp: Three.js dot grid
+
+- Files: ui/three-dot-grid.tsx (new), auth-form.tsx, dashboard.tsx, package.json (three, @types/three).
+- The auth screen now sits on a fullscreen WebGL dot-array animation (Three.js, GLSL ES 300): dots with varying opacities, a center-out intro wave, and periodic reshuffle. Premultiplied-alpha blending keeps it correct on the light background; dpr-capped and resize-aware, disposed on unmount.
+- The sign-in/sign-up card floats centered over the grid with the "ReconAI" header; fixed a regression where the card collapsed to its content width (the grid's content wrapper is now full-width + centered).
+- Removed the earlier dithering-shader experiment (ditched per review).
+- The dashboard's "ReconAI" wordmark is now clickable and switches to the Files tab from any tab.
