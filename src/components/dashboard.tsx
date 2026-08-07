@@ -63,7 +63,14 @@ export function Dashboard() {
     >
       {/* Header */}
       <header className="border-b border-border px-8 py-4 flex items-center justify-between">
-        <h1 className="text-h2">ReconAI</h1>
+        <button
+          type="button"
+          onClick={() => setTab('files')}
+          className="text-h2 cursor-pointer text-foreground transition-opacity hover:opacity-70"
+          title="Go to Files"
+        >
+          ReconAI
+        </button>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
