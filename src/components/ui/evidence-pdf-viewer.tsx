@@ -367,13 +367,21 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
   };
 
   // Scroll the active highlight into view (across the whole page stack).
-  // Runs only after every page canvas has been drawn (pagesReady) — the
-  // offset math needs real heights.
+  // Runs after every page canvas has been drawn (pagesReady) and on zoom
+  // changes — the offset math needs real heights at the current scale.
   useEffect(() => {
     if (pdfStatus !== 'ready' || !pagesReady || !activeRowKey) return;
-    const id = setTimeout(() => scrollToKey(activeRowKey), 200);
+    const id = setTimeout(() => {
+      scrollToKey(activeRowKey);
+      // A 3× canvas is ~9MP; if the browser is still settling the repaint
+      // when the smooth scroll starts, it can be dropped (Safari). Retry
+      // once after a frame so the center always lands.
+      requestAnimationFrame(() => {
+        if (scrollRef.current) scrollToKey(activeRowKey);
+      });
+    }, 250);
     return () => clearTimeout(id);
-  }, [pdfStatus, pagesReady, activeRowKey, rows, visiblePages]);
+  }, [pdfStatus, pagesReady, activeRowKey, rows, visiblePages, zoom]);
 
   return (
     <div className="flex h-[520px] flex-col overflow-hidden rounded-xl border border-border bg-muted/30">
