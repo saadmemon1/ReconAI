@@ -370,7 +370,8 @@ function EvidenceButton({ finding, group, classifications }: {
   classifications: DocumentClassification[];
 }) {
   const [open, setOpen] = useState(false);
-  const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
+  // Selected files for panes, most-recent-first, capped at MAX_PANES.
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   // Build the mindmap file nodes from the finding's group + classifications,
   // then attribute each source citation to the file it mentions.
@@ -388,10 +389,29 @@ function EvidenceButton({ finding, group, classifications }: {
   for (const f of files) f.citations = byFile[f.id] || [];
   // Only files with at least one attributed citation orbit the center.
   const citedFiles = files.filter(f => f.citations.length > 0);
-  const selectedFile = citedFiles.find(f => f.id === selectedFileId) || null;
-  // The PDF panel opens only when a node is selected — orbit stays centered
-  // until then, then repositions and the viewer slides in from the right.
-  const viewerOpen = selectedFileId !== null;
+
+  const selectedSet = new Set(selectedIds);
+  // The pane grid shows the most-recently-selected files (cap 3); clicking
+  // an orbit node when full swaps the newest in and drops the oldest.
+  const MAX_PANES = 3;
+  const visibleFiles = selectedIds
+    .map(id => citedFiles.find(f => f.id === id))
+    .filter((f): f is MindmapFileNode => Boolean(f));
+  const viewerOpen = visibleFiles.length > 0;
+  const multi = viewerOpen && visibleFiles.length >= 2;
+  const hiddenCited = citedFiles.filter(f => !selectedSet.has(f.id));
+
+  const toggleFile = (id: number) => {
+    setSelectedIds(prev => {
+      const next = prev.filter(x => x !== id);
+      if (next.length === prev.length) {
+        // Not present → add as the newest pane (drop the oldest if full).
+        next.unshift(id);
+        return next.slice(0, MAX_PANES);
+      }
+      return next; // present → removed
+    });
+  };
 
   return (
     <>
@@ -401,7 +421,7 @@ function EvidenceButton({ finding, group, classifications }: {
         onClick={() => {
           // No file pre-selected — the viewer opens dynamically when a node
           // is clicked in the orbit.
-          setSelectedFileId(null);
+          setSelectedIds([]);
           setOpen(true);
         }}
         disabled={finding.sourceCitations.length === 0}
@@ -412,33 +432,61 @@ function EvidenceButton({ finding, group, classifications }: {
 
       <Dialog open={open} onOpenChange={setOpen}>
         {/* sm:max-w-6xl (not plain max-w-*) — DialogContent's base sm:max-w-sm
-            would otherwise cap the dialog at 384px */}
-        <DialogContent className="sm:max-w-6xl">
+            would otherwise cap the dialog at 384px. Multi-pane widens it. */}
+        <DialogContent className={cn('sm:max-w-6xl', multi && 'sm:max-w-7xl')}>
           <DialogTitle className="text-h3 font-semibold leading-6">Evidences Mindmap</DialogTitle>
-          {/* Dynamic split: orbit centered until a node is clicked, then it
-              repositions and the PDF panel slides in on the right */}
+          {/* Split: orbit stays square on the left (compacts for panes); the
+              pane grid slides in on the right. Single pane = full-width pane
+              exactly like the old single viewer. */}
           <div className="flex flex-col gap-4 lg:flex-row">
             <div
               className={cn(
                 'transition-all duration-300',
-                viewerOpen ? 'shrink-0 lg:w-[600px]' : 'w-full'
+                viewerOpen ? 'shrink-0' : 'w-full',
+                multi ? 'lg:w-[380px]' : viewerOpen ? 'lg:w-[600px]' : ''
               )}
             >
               <EvidenceMindmap
                 finding={finding}
                 files={citedFiles}
                 unassignedCount={unassigned.length}
-                selectedFileId={selectedFileId}
-                onSelectFile={setSelectedFileId}
+                selectedFileIds={selectedSet}
+                onToggleFile={toggleFile}
+                onClearSelection={() => setSelectedIds([])}
+                compact={multi}
               />
             </div>
             <div
               className={cn(
                 'min-w-0 overflow-hidden transition-all duration-300',
-                viewerOpen ? 'lg:w-[520px] lg:opacity-100' : 'lg:w-0 lg:opacity-0'
+                viewerOpen ? 'lg:opacity-100' : 'lg:w-0 lg:opacity-0',
+                viewerOpen && (multi ? 'lg:flex-1' : 'lg:w-[520px]')
               )}
             >
-              <EvidencePdfViewer key={selectedFileId ?? 'none'} file={selectedFile} />
+              {viewerOpen && (
+                <div>
+                  <div
+                    className={cn(
+                      'grid gap-3',
+                      visibleFiles.length === 1
+                        ? 'grid-cols-1'
+                        : visibleFiles.length === 2
+                          ? 'grid-cols-2'
+                          : 'grid-cols-3'
+                    )}
+                  >
+                    {visibleFiles.map(f => (
+                      <EvidencePdfViewer key={f.id} file={f} />
+                    ))}
+                  </div>
+                  {hiddenCited.length > 0 && (
+                    <p className="mt-2 text-xs text-secondary">
+                      {hiddenCited.length} more file{hiddenCited.length === 1 ? '' : 's'} in this finding —
+                      click their orbit nodes to swap panes.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </DialogContent>

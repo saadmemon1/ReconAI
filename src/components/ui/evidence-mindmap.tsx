@@ -59,14 +59,18 @@ export function EvidenceMindmap({
   finding,
   files,
   unassignedCount = 0,
-  selectedFileId,
-  onSelectFile,
+  selectedFileIds,
+  onToggleFile,
+  onClearSelection,
+  compact = false,
 }: {
   finding: Finding;
   files: MindmapFileNode[];
   unassignedCount?: number;
-  selectedFileId: number | null;
-  onSelectFile: (id: number | null) => void;
+  selectedFileIds: Set<number>;
+  onToggleFile: (id: number) => void;
+  onClearSelection: () => void;
+  compact?: boolean;
 }) {
   const [rotation, setRotation] = useState(0);
   const [autoRotate, setAutoRotate] = useState(true);
@@ -78,6 +82,10 @@ export function EvidenceMindmap({
   const containerRef = useRef<HTMLDivElement>(null);
   const orbitRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
+
+  // Compact mode (multi-pane): smaller orbit, labels hidden to save width.
+  const radius = compact ? 150 : ORBIT_RADIUS;
+  const ringSize = radius * 2 - 40;
 
   const SeverityIcon = SEVERITY_ICONS[finding.severity] || Info;
   const centerColors = SEVERITY_CENTER[finding.severity] || SEVERITY_CENTER.low;
@@ -101,23 +109,23 @@ export function EvidenceMindmap({
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target === containerRef.current || target === orbitRef.current || target === ringRef.current) {
-      onSelectFile(null);
+      onClearSelection();
       setAutoRotate(true);
     }
   };
 
   const handleNodeClick = (file: MindmapFileNode, index: number) => {
-    onSelectFile(file.id);
+    onToggleFile(file.id);
     setAutoRotate(false);
-    // Rotate the selected node to the top.
+    // Rotate the clicked node to the top.
     if (files.length > 0) setRotation(270 - (index / files.length) * 360);
   };
 
   const position = (index: number, total: number) => {
     const angle = ((index / total) * 360 + rotation) % 360;
     const radian = (angle * Math.PI) / 180;
-    const x = ORBIT_RADIUS * Math.cos(radian);
-    const y = ORBIT_RADIUS * Math.sin(radian);
+    const x = radius * Math.cos(radian);
+    const y = radius * Math.sin(radian);
     const zIndex = Math.round(100 + 50 * Math.cos(radian));
     const opacity = Math.max(0.35, Math.min(1, 0.4 + 0.6 * ((1 + Math.sin(radian)) / 2)));
     return { x, y, zIndex, opacity };
@@ -133,7 +141,8 @@ export function EvidenceMindmap({
         {/* Orbit ring */}
         <div
           ref={ringRef}
-          className="absolute h-[360px] w-[360px] rounded-full border border-border"
+          className="absolute rounded-full border border-border"
+          style={{ width: ringSize, height: ringSize }}
         />
 
         {/* Center: the finding itself — severity-colored circle, caption below,
@@ -145,30 +154,35 @@ export function EvidenceMindmap({
         >
           <div
             className={cn(
-              'relative flex size-16 animate-pulse items-center justify-center rounded-full shadow-lg motion-reduce:animate-none',
+              'relative flex animate-pulse items-center justify-center rounded-full shadow-lg motion-reduce:animate-none',
+              compact ? 'size-12' : 'size-16',
               centerColors.circle
             )}
           >
             <div
               className={cn(
-                'absolute size-20 animate-ping rounded-full border opacity-70 motion-reduce:animate-none',
+                'absolute rounded-full border opacity-70 motion-reduce:animate-none',
+                compact ? 'size-14' : 'size-20 animate-ping',
                 centerColors.ring1
               )}
             />
             <div
               className={cn(
-                'absolute size-24 animate-ping rounded-full border opacity-50 motion-reduce:animate-none',
+                'absolute rounded-full border opacity-50 motion-reduce:animate-none',
+                compact ? 'size-16' : 'size-24 animate-ping',
                 centerColors.ring2
               )}
               style={{ animationDelay: '0.5s' }}
             />
-            <SeverityIcon className="size-6 text-primary-foreground" />
+            <SeverityIcon className={cn('text-primary-foreground', compact ? 'size-4' : 'size-6')} />
           </div>
 
-          {/* Brief finding caption under the center */}
-          <p className="mt-2 whitespace-nowrap rounded bg-muted/60 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-foreground">
-            {finding.severity} · {finding.category.replace(/_/g, ' ')}
-          </p>
+          {/* Brief finding caption under the center (hidden when compact) */}
+          {!compact && (
+            <p className="mt-2 whitespace-nowrap rounded bg-muted/60 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-foreground">
+              {finding.severity} · {finding.category.replace(/_/g, ' ')}
+            </p>
+          )}
 
           {centerInfoOpen && (
             <div className="mt-2 w-72 rounded-lg border border-border bg-card p-3 text-left shadow-xl">
@@ -185,12 +199,13 @@ export function EvidenceMindmap({
           )}
         </div>
 
-        {/* File nodes — click to select (drives the PDF panel) */}
+        {/* File nodes — click to toggle its evidence pane */}
         {files.length > 0 &&
           files.map((file, index) => {
             const p = position(index, files.length);
-            const isSelected = file.id === selectedFileId;
-            const isDimmed = selectedFileId !== null && !isSelected;
+            const hasSelection = selectedFileIds.size > 0;
+            const isSelected = selectedFileIds.has(file.id);
+            const isDimmed = hasSelection && !isSelected;
 
             return (
               <div
@@ -203,6 +218,7 @@ export function EvidenceMindmap({
                   zIndex: isSelected ? 200 : p.zIndex,
                   opacity: isSelected ? 1 : isDimmed ? 0.3 : p.opacity,
                 }}
+                title={file.title}
                 onClick={e => {
                   e.stopPropagation();
                   handleNodeClick(file, index);
@@ -210,29 +226,32 @@ export function EvidenceMindmap({
               >
                 <div
                   className={cn(
-                    'flex size-10 items-center justify-center rounded-full border-2 transition-all duration-300',
+                    'flex items-center justify-center rounded-full border-2 transition-all duration-300',
+                    compact ? 'size-8' : 'size-10',
                     isSelected
                       ? 'scale-125 border-primary bg-primary text-primary-foreground shadow-lg shadow-primary/20'
                       : 'border-border bg-background text-secondary hover:border-primary hover:text-foreground'
                   )}
                 >
-                  <FileText size={16} />
+                  <FileText size={compact ? 14 : 16} />
                 </div>
-                <div
-                  className={cn(
-                    'absolute left-1/2 top-12 max-w-[160px] -translate-x-1/2 truncate text-center text-xs font-semibold tracking-wider transition-all duration-300',
-                    isSelected ? 'scale-125 text-foreground' : 'text-secondary'
-                  )}
-                >
-                  {file.title}
-                </div>
+                {!compact && (
+                  <div
+                    className={cn(
+                      'absolute left-1/2 top-12 max-w-[160px] -translate-x-1/2 truncate text-center text-xs font-semibold tracking-wider transition-all duration-300',
+                      isSelected ? 'scale-125 text-foreground' : 'text-secondary'
+                    )}
+                  >
+                    {file.title}
+                  </div>
+                )}
               </div>
             );
           })}
       </div>
 
       <p className="pointer-events-none absolute bottom-2 left-3 text-xs text-secondary/70">
-        Click a file to view its evidence · click empty space to reset
+        Click files to open their evidence panes · click empty space to close all
       </p>
       {unassignedCount > 0 && (
         <p className="pointer-events-none absolute bottom-2 right-3 text-xs text-secondary/70">

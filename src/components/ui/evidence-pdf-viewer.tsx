@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Loader2, MapPin } from 'lucide-react';
+import { ExternalLink, Loader2, MapPin, ZoomIn, ZoomOut } from 'lucide-react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Button } from '@/components/ui/button';
 import type { CitationLocation, MindmapFileNode, SegmentLike } from '@/lib/evidence-utils';
@@ -171,6 +171,14 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
   // Becomes true once every page canvas has been drawn — the scroll math
   // needs real canvas heights and must not run mid-draw.
   const [pagesReady, setPagesReady] = useState(false);
+  // A' mode: by default only pages carrying highlights render (auto-centered
+  // on the active highlight); "All pages" expands to the full document.
+  const [showAllPages, setShowAllPages] = useState(false);
+  // Multi-stage zoom (1× → 2× → 3×). Re-renders pages at a higher scale so
+  // the zoom stays crisp; the view re-centers on the active highlight.
+  const [zoom, setZoom] = useState(1);
+  const zoomIn = () => setZoom(z => (z >= 3 ? 3 : z + 1));
+  const zoomOut = () => setZoom(z => (z <= 1 ? 1 : z - 1));
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const textCacheRef = useRef<Map<number, TextItemLike[]>>(new Map());
@@ -206,6 +214,46 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
         const doc = await getPdfDoc(file.fileId); // warm the cache / surface errors
         if (cancelled) return;
         setNumPages(doc.numPages);
+
+        // Text-layer pass over every page: refine located boxes and
+        // text-locate unmatched citations (a born-digital quote is right there
+        // in the rendered PDF even when segment matching missed).
+        const refs: Record<number, Box> = {};
+        const hits: Array<{ key: string; citation: string; page: number; box: Box }> = [];
+        const foundMiss = new Set<number>();
+        for (let p = 1; p <= doc.numPages; p++) {
+          if (cancelled) return;
+          const pdfPage = await doc.getPage(p);
+          const vp1 = pdfPage.getViewport({ scale: 1 });
+          let items = textCacheRef.current.get(p);
+          if (!items) {
+            items = [];
+            try {
+              const tc = await pdfPage.getTextContent();
+              for (const it of tc.items) {
+                if ('str' in it) items.push(it);
+              }
+            } catch {}
+            textCacheRef.current.set(p, items);
+          }
+          for (let i = 0; i < locs.length; i++) {
+            const loc = locs[i];
+            if (loc.page !== p) continue;
+            const box = findTextBox(items, loc.needle, vp1);
+            if (box) refs[i] = box;
+          }
+          for (let m = 0; m < miss.length; m++) {
+            if (foundMiss.has(m)) continue;
+            const box = findTextBox(items, extractCitationNeedle(miss[m]), vp1);
+            if (box) {
+              foundMiss.add(m);
+              hits.push({ key: `t${m}`, citation: miss[m], page: p, box });
+            }
+          }
+        }
+        if (cancelled) return;
+        setRefinements(refs);
+        setTextHits(hits);
         setPdfStatus('ready');
       } catch {
         if (cancelled) return;
@@ -218,26 +266,34 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
     };
   }, [file?.id, file?.fileId]);
 
-  // Render ALL pages (continuous scroll) and, per page: refine located
-  // boxes from the text layer, and text-locate unmatched citations — a
-  // born-digital doc's quote that segment matching missed still gets a
-  // highlight because the text is right there in the rendered PDF.
+  // A' mode: which pages render. By default only pages carrying highlights
+  // (located or text-located) — the pane IS the evidence. "All pages" shows
+  // the full document. Falls back to page 1 when nothing matched.
+  const visiblePages = useMemo(() => {
+    if (showAllPages) return Array.from({ length: numPages }, (_, i) => i + 1);
+    const pages = new Set<number>();
+    for (const loc of located) pages.add(loc.page);
+    for (const h of textHits) pages.add(h.page);
+    const list = [...pages].sort((a, b) => a - b);
+    return list.length > 0 ? list : numPages > 0 ? [1] : [];
+  }, [showAllPages, numPages, located, textHits]);
+
+  // Draw every visible page's canvas (text-layer work already happened in the
+  // load effect). pagesReady flips so the scroll effect re-centers after a
+  // mode toggle or a redraw.
   useEffect(() => {
-    if (pdfStatus !== 'ready' || !file?.fileId || numPages === 0) return;
+    if (pdfStatus !== 'ready' || !file?.fileId || visiblePages.length === 0) return;
     let cancelled = false;
     const id = setTimeout(async () => {
+      setPagesReady(false);
       try {
         const doc = await getPdfDoc(file.fileId!);
         const dpr = window.devicePixelRatio || 1;
-        const refs: Record<number, Box> = {};
-        const hits: Array<{ key: string; citation: string; page: number; box: Box }> = [];
-        const foundMiss = new Set<number>();
-
-        for (let p = 1; p <= numPages; p++) {
+        for (const p of visiblePages) {
           if (cancelled) return;
           const pdfPage = await doc.getPage(p);
           const vp1 = pdfPage.getViewport({ scale: 1 });
-          const renderScale = (RENDER_WIDTH * dpr) / vp1.width;
+          const renderScale = (RENDER_WIDTH * zoom * dpr) / vp1.width;
           const viewport = pdfPage.getViewport({ scale: renderScale });
           const canvas = pagesRef.current.get(p);
           if (!canvas) continue;
@@ -248,44 +304,8 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
           // pdfjs-dist v6: render takes the canvas element (not a 2d context).
           await pdfPage.render({ canvas, viewport }).promise;
           if (cancelled) return;
-
-          // Text layer (cached per page). Extraction is isolated — it must
-          // never fail the view; scanned docs simply get no refinement.
-          let items = textCacheRef.current.get(p);
-          if (!items) {
-            items = [];
-            try {
-              const tc = await pdfPage.getTextContent();
-              for (const it of tc.items) {
-                if ('str' in it) items.push(it);
-              }
-            } catch {}
-            textCacheRef.current.set(p, items);
-          }
-
-          // Refine located rows on this page.
-          for (let i = 0; i < located.length; i++) {
-            const loc = located[i];
-            if (loc.page !== p) continue;
-            const box = findTextBox(items, loc.needle, vp1);
-            if (box) refs[i] = box;
-          }
-
-          // Text-locate unmatched citations (first page that contains the
-          // quote wins).
-          for (let m = 0; m < misses.length; m++) {
-            if (foundMiss.has(m)) continue;
-            const box = findTextBox(items, extractCitationNeedle(misses[m]), vp1);
-            if (box) {
-              foundMiss.add(m);
-              hits.push({ key: `t${m}`, citation: misses[m], page: p, box });
-            }
-          }
         }
-
         if (cancelled) return;
-        setRefinements(refs);
-        setTextHits(hits);
         setPagesReady(true);
       } catch {
         if (cancelled) return;
@@ -296,7 +316,7 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [pdfStatus, numPages, located, misses, file?.id, file?.fileId]);
+  }, [pdfStatus, visiblePages, zoom, file?.id, file?.fileId]);
 
   // Unified highlight rows: matcher results (DocAI box, refined by the text
   // layer when available) + text-located misses.
@@ -326,17 +346,24 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
     const scroller = scrollRef.current;
     if (!row || !scroller) return;
     let offset = 0;
-    for (let p = 1; p < row.page; p++) {
+    for (const p of visiblePages) {
+      if (p >= row.page) break;
       offset += pagesRef.current.get(p)?.offsetHeight ?? 0;
       offset += PAGE_GAP;
     }
     const canvas = pagesRef.current.get(row.page);
     if (!canvas) return;
     const boxMidY = (row.box.y1 + row.box.y2) / 2;
+    const boxMidX = (row.box.x1 + row.box.x2) / 2;
     offset += (boxMidY / 100) * canvas.offsetHeight - scroller.clientHeight / 2;
-    // Smooth scroll (instant under prefers-reduced-motion).
+    // Smooth scroll (instant under prefers-reduced-motion); center the box
+    // horizontally too when the zoomed page overflows the pane.
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    scroller.scrollTo({ top: Math.max(0, offset), behavior: reduced ? 'auto' : 'smooth' });
+    scroller.scrollTo({
+      top: Math.max(0, offset),
+      left: Math.max(0, (boxMidX / 100) * canvas.offsetWidth - scroller.clientWidth / 2),
+      behavior: reduced ? 'auto' : 'smooth',
+    });
   };
 
   // Scroll the active highlight into view (across the whole page stack).
@@ -346,7 +373,7 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
     if (pdfStatus !== 'ready' || !pagesReady || !activeRowKey) return;
     const id = setTimeout(() => scrollToKey(activeRowKey), 200);
     return () => clearTimeout(id);
-  }, [pdfStatus, pagesReady, activeRowKey, rows]);
+  }, [pdfStatus, pagesReady, activeRowKey, rows, visiblePages]);
 
   return (
     <div className="flex h-[520px] flex-col overflow-hidden rounded-xl border border-border bg-muted/30">
@@ -361,19 +388,44 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
               <span className="truncate font-mono text-xs text-secondary">{file.title}</span>
             </div>
             {file.fileId && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(`/api/docai/files/${file.fileId}/content`, '_blank')}
-              >
-                <ExternalLink className="mr-1 size-3.5" />
-                Open file
-              </Button>
+              <div className="flex shrink-0 items-center gap-1">
+                <div className="flex items-center gap-0.5 rounded-md border border-border px-1">
+                  <button
+                    className="rounded p-0.5 text-secondary hover:text-foreground disabled:opacity-30"
+                    onClick={zoomOut}
+                    disabled={zoom <= 1}
+                    title="Zoom out"
+                  >
+                    <ZoomOut className="size-3.5" />
+                  </button>
+                  <span className="min-w-6 text-center text-xs tabular-nums text-secondary">×{zoom}</span>
+                  <button
+                    className="rounded p-0.5 text-secondary hover:text-foreground disabled:opacity-30"
+                    onClick={zoomIn}
+                    disabled={zoom >= 3}
+                    title="Zoom in"
+                  >
+                    <ZoomIn className="size-3.5" />
+                  </button>
+                </div>
+                <Button variant="ghost" size="sm" className="px-1.5 text-[11px]" onClick={() => setShowAllPages(v => !v)}>
+                  {showAllPages ? 'Cited' : 'All pages'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="px-1.5"
+                  title="Open file in a new tab"
+                  onClick={() => window.open(`/api/docai/files/${file.fileId}/content`, '_blank')}
+                >
+                  <ExternalLink className="size-3.5" />
+                </Button>
+              </div>
             )}
           </div>
 
           {/* Full-document scrollable page stack with highlight overlays */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-3">
+          <div ref={scrollRef} className="flex-1 overflow-auto p-3">
             {pdfStatus === 'loading' && <Loader2 className="mx-auto mt-10 size-6 animate-spin text-secondary" />}
             {pdfStatus === 'error' && (
               <p className="mt-10 text-center text-xs text-secondary">Failed to load the PDF. Open file to view it directly.</p>
@@ -385,13 +437,20 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
                     {stillMissed.length} citation{stillMissed.length === 1 ? '' : 's'} not matched to a location
                   </p>
                 )}
-                {Array.from({ length: numPages }, (_, i) => i + 1).map(p => {
+                {visiblePages.map(p => {
                   const pageRows = rows.filter(r => r.page === p);
                   return (
                     <div
                       key={p}
-                      className="relative mb-3 w-full max-w-[420px] bg-white shadow-sm"
-                      style={{ marginBottom: p === numPages ? 0 : PAGE_GAP }}
+                      className="relative mb-3 bg-white shadow-sm"
+                      style={{
+                        // Zoom: the card grows beyond the pane and the scroller
+                        // pans; canvases re-render at scale so the zoom is crisp.
+                        // Base width = min(100%, 420px) — fills the pane but
+                        // never exceeds the crisp-render width.
+                        width: zoom > 1 ? `${Math.round(420 * zoom)}px` : 'min(100%, 420px)',
+                        marginBottom: p === visiblePages[visiblePages.length - 1] ? 0 : PAGE_GAP,
+                      }}
                     >
                       <canvas
                         ref={el => {
@@ -404,8 +463,10 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
                         <div
                           key={r.key}
                           className={cn(
-                            'pointer-events-none absolute rounded-[2px] border-2 border-yellow-400 bg-yellow-300/40',
-                            r.key === activeRowKey && 'animate-pulse motion-reduce:animate-none'
+                            'absolute rounded-[2px] border-2 border-yellow-400 bg-yellow-300/40',
+                            r.key === activeRowKey
+                              ? 'pointer-events-auto animate-pulse cursor-zoom-in motion-reduce:animate-none'
+                              : 'pointer-events-none'
                           )}
                           style={{
                             left: `${r.box.x1}%`,
@@ -413,6 +474,8 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
                             width: `${r.box.x2 - r.box.x1}%`,
                             height: `${r.box.y2 - r.box.y1}%`,
                           }}
+                          onClick={r.key === activeRowKey ? zoomIn : undefined}
+                          title={r.key === activeRowKey ? 'Click to zoom in' : undefined}
                         />
                       ))}
                     </div>
