@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { Card } from './ui/card';
 import { Label } from './ui/label';
 import { PasswordStrength, usePasswordStrength } from './ui/password-strength';
+import { ThreeDotGrid } from './ui/three-dot-grid';
 
 export function AuthForm() {
   const { signIn, signUp } = useAuth();
@@ -47,9 +48,9 @@ export function AuthForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <ThreeDotGrid dotColor="#334155">
       <Card className="w-full max-w-md p-8">
-        <h1 className="text-h1 mb-8">ReconAI</h1>
+        <h1 className="text-display text-center mb-8">ReconAI</h1>
         
         <div className="flex gap-2 mb-6">
           <Button 
@@ -105,7 +106,7 @@ export function AuthForm() {
             {loading ? '...' : mode === 'signin' ? 'Sign In' : 'Create Account'}
           </Button>
         </form>
-      </Card>
-    </div>
+        </Card>
+      </ThreeDotGrid>
   );
 }
