@@ -14,7 +14,12 @@ function Separator({
       data-slot="separator"
       orientation={orientation}
       className={cn(
-        "shrink-0 bg-border data-horizontal:h-px data-horizontal:w-full data-vertical:w-px data-vertical:self-stretch",
+        // Explicit dimensions by orientation: Base UI emits
+        // data-orientation="horizontal|vertical" — the old data-horizontal:*
+        // variants matched nothing, so separators rendered at 0px and were
+        // invisible everywhere.
+        "shrink-0 bg-border",
+        orientation === "horizontal" ? "h-px w-full" : "w-px self-stretch",
         className
       )}
       {...props}

@@ -35,11 +35,14 @@ const DropdownMenuContent = React.forwardRef<
     Pick<MenuPrimitive.Positioner.Props, "align" | "side" | "sideOffset">
 >(({ className, align = "start", side = "bottom", sideOffset = 4, ...props }, ref) => (
   <MenuPrimitive.Portal>
-    <MenuPrimitive.Positioner align={align} side={side} sideOffset={sideOffset}>
+    {/* z lives on the Positioner (not the popup): the popup's z-index is
+        trapped inside the positioner's stacking context, and a z-auto
+        positioner paints below sticky siblings (e.g. the sidebar's z-30) */}
+    <MenuPrimitive.Positioner align={align} side={side} sideOffset={sideOffset} className="z-50">
       <MenuPrimitive.Popup
         ref={ref}
         className={cn(
-          "z-50 min-w-40 overflow-hidden rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none",
+          "min-w-40 overflow-hidden rounded-lg border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg outline-none",
           "data-starting-style:animate-in data-starting-style:fade-in-0 data-starting-style:zoom-in-95",
           "data-ending-style:animate-out data-ending-style:fade-out-0 data-ending-style:zoom-out-95",
           className,

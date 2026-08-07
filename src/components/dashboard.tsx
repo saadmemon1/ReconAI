@@ -21,8 +21,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
-import { LogOut } from 'lucide-react';
+import { LogOut, FileText, FileBarChart, Coins } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
+import { NavBar } from './ui/tubelight-navbar';
 
 type Tab = 'files' | 'report';
 
@@ -55,61 +56,99 @@ export function Dashboard() {
 
   return (
     <div
-      className="min-h-screen bg-background flex flex-col"
-      // --tabbar-h = height of the sticky tab bar (h-8 button 32px + py-3 24px).
-      // The findings table's sticky filter bar/header in report-viewer offset
-      // below it via this var — single source of truth if the bar resizes.
-      style={{ '--tabbar-h': '56px' } as CSSProperties}
+      className="flex min-h-screen bg-background"
+      // --tabbar-h = 0: the sidebar occupies the left, not the top — the
+      // report's sticky filter pins flush at the viewport top.
+      style={{ '--tabbar-h': '0px' } as CSSProperties}
     >
-      {/* Header */}
-      <header className="border-b border-border px-8 py-4 flex items-center justify-between">
+      {/* Sidebar — sticky full-height rail on the LEFT: wordmark + vertical
+          tabs persist while scrolling. */}
+      <aside className="sticky top-0 z-30 flex h-screen w-16 shrink-0 flex-col border-r border-border bg-background md:w-44">
         <button
           type="button"
           onClick={() => setTab('files')}
-          className="text-h2 cursor-pointer text-foreground transition-opacity hover:opacity-70"
+          className="flex items-center justify-center px-3 py-5 text-h2 font-semibold cursor-pointer text-foreground transition-opacity hover:opacity-70 md:justify-start md:px-5"
           title="Go to Files"
         >
-          ReconAI
+          <span className="md:hidden">R</span>
+          <span className="hidden md:inline">ReconAI</span>
         </button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                className="w-9 h-9 rounded-full cursor-pointer"
-                aria-label="Account menu"
-                title="Account"
-              />
-            }
-          >
-            <Avatar className="size-8">
-              <AvatarFallback className="bg-primary text-primary-foreground text-sm">{initials || '?'}</AvatarFallback>
-            </Avatar>
-          </DropdownMenuTrigger>
-          {/* side="left": opens beside the avatar over the header's empty right
-              side — the cramped gap under the avatar ends right at the sticky
-              tab bar's top edge, so a bottom-anchored popup would overlap it */}
-          <DropdownMenuContent align="center" side="left" className="w-56">
-            <div className="px-3 py-2.5">
-              <p className="truncate text-sm font-medium text-foreground">
-                {displayName || 'Account'}
-              </p>
-              {orgName && (
-                <p className="mt-0.5 truncate text-xs text-secondary">{orgName}</p>
-              )}
-            </div>
-            <Separator className="my-1" />
-            <DropdownMenuItem
-              className="text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
-              onClick={() => setSignOutOpen(true)}
+        <nav className="flex flex-col gap-1 px-3">
+          {selectedKB && (
+            <NavBar
+              orientation="vertical"
+              items={[
+                { name: 'Files', url: '#', icon: FileText },
+                { name: 'Report', url: '#', icon: FileBarChart },
+              ]}
+              value={tab === 'files' ? 'Files' : 'Report'}
+              onChange={(name) => {
+                if (name === 'Report') setReconcileRequest(null); // manual view: don't re-trigger a run
+                setTab(name === 'Files' ? 'files' : 'report');
+              }}
+            />
+          )}
+        </nav>
+
+        {/* Sidebar bottom: profile button — avatar + name in one row. The
+            button's click target runs all the way down to the rail's bottom
+            edge (pt-3 pb-6), while the visible row itself floats ~24px above
+            it; the account menu opens upward */}
+        <div className="mt-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-2 rounded-none px-3 pt-7 pb-6"
+                  aria-label="Account menu"
+                  title="Account"
+                />
+              }
             >
-              <LogOut className="size-4" />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </header>
+              <Avatar className="size-8 shrink-0">
+                <AvatarFallback className="bg-primary text-primary-foreground text-sm">{initials || '?'}</AvatarFallback>
+              </Avatar>
+              <span className="hidden min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground md:block">
+                {displayName || 'Account'}
+              </span>
+            </DropdownMenuTrigger>
+            {/* Cozy 3-section popup: identity / credits / sign out. Every row
+                shares the same padding + icon-gutter rhythm; the credits are a
+                plain text row (no pill) so nothing sticks out. */}
+            <DropdownMenuContent side="top" align="start" className="w-60 p-1.5">
+              <div className="rounded-md px-2.5 py-3">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {displayName || 'Account'}
+                </p>
+                {orgName && (
+                  <p className="mt-0.5 truncate text-xs text-secondary">{orgName}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2.5 rounded-md px-2.5 py-2.5">
+                <Coins className="size-4 shrink-0 text-secondary" />
+                <span className="text-sm text-foreground">
+                  <CreditDisplay />
+                </span>
+              </div>
+              {/* minimal divider above the action — subtle but visible
+                  (bg-foreground/15: the old bg-border hairline vanished on
+                  HiDPI) */}
+              <Separator className="my-2 bg-foreground/15" />
+              <DropdownMenuItem
+                className="py-2.5 text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
+                onClick={() => setSignOutOpen(true)}
+              >
+                <LogOut className="size-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </aside>
+
+      {/* Main column — content scrolls under the sticky rail */}
+      <div className="relative min-w-0 flex-1">
 
       {/* Sign-out confirmation — opened from the account menu; keeps the
           single-click-can't-sign-you-out guarantee */}
@@ -135,54 +174,31 @@ export function Dashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Body */}
-      <div className="flex-1 w-full max-w-6xl mx-auto px-8 py-8">
-        {/* Workspace Selection */}
-        <section className="mb-8">
-          <WorkspaceManager 
-            key={wsRefreshKey}
-            selectedKB={selectedKB} 
-            onSelect={(id) => {
-              setReconcileRequest(null); // workspace switch: don't re-run a stale request
-              setSelectedKB(id);
-            }} 
-          />
-        </section>
+        {/* Body */}
+        <div className="mx-auto w-full max-w-6xl px-8 py-8">
+          {/* Workspace Selection */}
+          <section className="mb-8">
+            <WorkspaceManager 
+              key={wsRefreshKey}
+              selectedKB={selectedKB} 
+              onSelect={(id) => {
+                setReconcileRequest(null); // workspace switch: don't re-run a stale request
+                setSelectedKB(id);
+              }} 
+            />
+          </section>
 
-        {selectedKB && (
-          <>
-            {/* Tabs — sticky: pinned to the top of the viewport while scrolling
-                so the active tab stays visible. -mt-3/mb-3 cancel out the py-3
-                so the resting layout is pixel-identical to before. */}
-            <div className="sticky top-0 z-30 bg-background py-3 -mt-3 mb-3 flex gap-2">
-              <Button 
-                variant={tab === 'files' ? 'default' : 'ghost'}
-                onClick={() => setTab('files')}
-              >
-                Files
-              </Button>
-              <Button 
-                variant={tab === 'report' ? 'default' : 'ghost'}
-                onClick={() => {
-                  setReconcileRequest(null); // manual view: don't re-trigger a run
-                  setTab('report');
-                }}
-              >
-                Report
-              </Button>
-            </div>
+          {selectedKB && (
+            <>
+              {/* Tabs live in the sidebar rail now (see aside above) */}
+              <div key={tab} className="animate-crossfade">
+                {tab === 'files' && <FileManager kbId={selectedKB} onWorkspacesChanged={() => setWsRefreshKey(k => k + 1)} onSwitchWorkspace={setSelectedKB} onReconcile={handleReconcile} />}
+                {tab === 'report' && <ReconcileRunner key={selectedKB} kbId={selectedKB} reconcileRequest={reconcileRequest} />}
+              </div>
+            </>
+          )}
+        </div>
 
-            <div key={tab} className="animate-crossfade">
-              {tab === 'files' && <FileManager kbId={selectedKB} onWorkspacesChanged={() => setWsRefreshKey(k => k + 1)} onSwitchWorkspace={setSelectedKB} onReconcile={handleReconcile} />}
-              {tab === 'report' && <ReconcileRunner key={selectedKB} kbId={selectedKB} reconcileRequest={reconcileRequest} />}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Credits — floating bottom left */}
-      <div className="fixed bottom-4 left-4 z-40">
-        <CreditDisplay />
       </div>
     </div>
   );

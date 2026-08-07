@@ -1,8 +1,12 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from './auth-provider';
-import { Badge } from './ui/badge';
 
+/**
+ * Live DocAI credit balance. Renders as a plain text row ("1,250 credits
+ * remaining") — the parent popup provides the icon and layout so it stays
+ * uniform with the other menu rows.
+ */
 export function CreditDisplay() {
   const { fetchDocAI } = useAuth();
   const [credits, setCredits] = useState<number | null>(null);
@@ -25,9 +29,5 @@ export function CreditDisplay() {
   }, [loadCredits]);
 
   if (credits === null) return null;
-  return (
-    <Badge variant="outline" className="text-sm">
-      {credits} credits
-    </Badge>
-  );
+  return <span>{credits.toLocaleString()} credits remaining</span>;
 }
