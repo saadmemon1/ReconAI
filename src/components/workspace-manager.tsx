@@ -41,8 +41,11 @@ export function WorkspaceManager({ selectedKB, onSelect }: {
     try {
       const res = await fetchDocAI('/knowledge-bases');
       const data = await res.json();
-      setKBs(data.knowledge_bases || data.items || []);
-      // Auto-select first workspace if none selected
+      const list = data.knowledge_bases || data.items || [];
+      setKBs(list);
+      // Auto-open the most recent workspace (API returns newest-first) when
+      // nothing is selected — e.g. fresh login or page reload.
+      if (!selectedKB && list.length > 0) onSelect(list[0].id);
       setLoading(false);
     } catch {} finally { setLoading(false); }
   };
