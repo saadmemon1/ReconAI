@@ -379,3 +379,13 @@
 - The LLM no longer does payable arithmetic: the summary contract forbids stating totals/overbilling/payable, and the engine computes Billed (Σ totalInvoice) − Overbilled (Σ overbilling + unsupported charges) = Recommended payable (clamped ≥ 0) from the sanitized KPIs, stripping any derivation the model writes anyway. Summary and KPI cards can no longer disagree.
 - The derivation line is engine-formatted with bold + color tokens (**[danger]** red / **[success]** green) via format-inline.ts; the redundant client-side derivation strip under the summary was removed.
 - The line-items section (fixed PO/Rec/Inv columns) is commented out, pending the dynamic-columns rework for non-purchase documents (e.g. logistics).
+
+### [2026-08-07] Evidence viewer: pane close buttons, Files-tab PDF preview, near-fullscreen Evidences dialog
+
+- Files: components/report-viewer.tsx, components/file-manager.tsx, components/ui/evidence-pdf-viewer.tsx, components/ui/evidence-mindmap.tsx
+- PDF panes now have an X close button that properly removes the pane (selection state included).
+- Files tab: "View" opens the PDF viewer inline on the right — single pane, full-document, no citation UI — filling the right half and the viewport height.
+- Viewer polish: role badge removed; All pages/Cited is now a switch (hidden when a file has no citations); pages render at the pane's measured width so they fill any pane (no fixed 420/520px cap).
+- Evidences dialog is near full screen (100vw−2rem × 100vh−2rem); panes stretch to fill the height.
+- Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
+- Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
