@@ -25,6 +25,8 @@ import { resolveUploadTarget, Workspace } from '@/lib/workspace-utils';
 import { isFileParsed, FileWithProcessing } from '@/lib/file-status';
 import { ModelSelector } from './model-selector';
 import { ProgressiveFluxLoader } from './ui/progressive-flux-loader';
+import { EvidencePdfViewer } from './ui/evidence-pdf-viewer';
+import type { MindmapFileNode } from '@/lib/evidence-utils';
 
 interface FileItem extends FileWithProcessing {
   id: string;
@@ -56,6 +58,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
   const [jobStatuses, setJobStatuses] = useState<Record<string, { status: string; percent: number }>>({});
   const [uploading, setUploading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Upload dialog state
@@ -221,7 +224,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
   };
 
   const viewFile = (fileId: string) => {
-    window.open(`/api/docai/files/${fileId}/content`, '_blank');
+    setPreviewFileId(fileId);
   };
 
   // Bulk parse: send all selected IDs at once, track jobs per file.
@@ -297,8 +300,41 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
 
   const unparsedSelected = [...selectedIds].filter(id => !parsedIds.has(id)).length;
 
+  // Inline single-pane PDF preview (files tab). id 0 is only used as a React
+  // key — the viewer keys off fileId; no citations here, so it renders the
+  // full-document stack with no highlights.
+  const previewNode: MindmapFileNode | null = (() => {
+    const pf = files.find(f => f.id === previewFileId);
+    return pf
+      ? { id: 0, title: pf.filename, role: 'FILE', fileId: pf.id, citations: [] }
+      : null;
+  })();
+
+  // The preview fills the viewport from its own position down to ~16px above
+  // the bottom — measured, so it never overflows regardless of what sits
+  // above the panel (no more guessing at the reserve).
+  const previewPanelRef = useRef<HTMLDivElement>(null);
+  const [previewHeight, setPreviewHeight] = useState<number | null>(null);
+  useEffect(() => {
+    if (!previewFileId) return;
+    const el = previewPanelRef.current;
+    if (!el) return;
+    const measure = () => {
+      const top = el.getBoundingClientRect().top;
+      setPreviewHeight(Math.max(320, window.innerHeight - top - 16));
+    };
+    // Deferred — synchronous setState in an effect body trips the lint rule.
+    const raf = requestAnimationFrame(measure);
+    window.addEventListener('resize', measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', measure);
+    };
+  }, [previewFileId]);
+
   return (
-    <div>
+    <div className="flex items-start gap-6">
+      <div className="min-w-0 flex-1">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-h3">Files</h2>
         <div className="flex gap-2">
@@ -527,6 +563,23 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
+
+      {/* Inline PDF preview — fills the right half (single pane, no multi-pane
+          here). role is a generic label; the viewer's own header still offers
+          Open-in-new-tab, zoom, and the close button. */}
+      {previewNode && (
+        <div
+          ref={previewPanelRef}
+          className="sticky top-[calc(var(--tabbar-h)+16px)] hidden min-w-0 flex-1 lg:block"
+        >
+          <EvidencePdfViewer
+            file={previewNode}
+            onClose={() => setPreviewFileId(null)}
+            style={previewHeight ? { height: previewHeight } : undefined}
+          />
+        </div>
+      )}
     </div>
   );
 }

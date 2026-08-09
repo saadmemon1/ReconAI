@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ExternalLink, Loader2, MapPin, ZoomIn, ZoomOut } from 'lucide-react';
+import { ExternalLink, Loader2, MapPin, XIcon, ZoomIn, ZoomOut } from 'lucide-react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Button } from '@/components/ui/button';
 import type { CitationLocation, MindmapFileNode, SegmentLike } from '@/lib/evidence-utils';
@@ -12,8 +12,9 @@ import { cn } from '@/lib/utils';
 const segmentsCache = new Map<string, SegmentLike[]>();
 const pdfCache = new Map<string, Promise<PDFDocumentProxy>>();
 
-// Render pages at ~420 CSS px wide (× devicePixelRatio for crispness).
-const RENDER_WIDTH = 420;
+// Render pages at ~520 CSS px wide (× devicePixelRatio for crispness) —
+// fills a half-width pane; smaller panes just use min(100%, …).
+const RENDER_WIDTH = 520;
 const PAGE_GAP = 12; // matches the mb-3 between page cards
 
 let pdfjsPromise: Promise<typeof import('pdfjs-dist')> | null = null;
@@ -159,7 +160,7 @@ function findTextBox(
   return null;
 }
 
-export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
+export function EvidencePdfViewer({ file, onClose, className, style }: { file: MindmapFileNode | null; onClose?: () => void; className?: string; style?: React.CSSProperties }) {
   const [located, setLocated] = useState<CitationLocation[]>([]);
   const [misses, setMisses] = useState<string[]>([]);
   const [textHits, setTextHits] = useState<Array<{ key: string; citation: string; page: number; box: Box }>>([]);
@@ -179,6 +180,10 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
   const [zoom, setZoom] = useState(1);
   const zoomIn = () => setZoom(z => (z >= 3 ? 3 : z + 1));
   const zoomOut = () => setZoom(z => (z <= 1 ? 1 : z - 1));
+  // Render pages at the pane's ACTUAL inner width (measured) — no fixed cap,
+  // so pages always fill the pane no matter how wide it is. Falls back to
+  // RENDER_WIDTH until the first measurement.
+  const [paneWidth, setPaneWidth] = useState(RENDER_WIDTH);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pagesRef = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const textCacheRef = useRef<Map<number, TextItemLike[]>>(new Map());
@@ -266,17 +271,36 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
     };
   }, [file?.id, file?.fileId]);
 
+  // Track the scroller's inner width so pages render at the pane's real size
+  // (a ResizeObserver catches pane re-layouts, e.g. 2-up → 3-up in the
+  // Evidences dialog). Measure the BORDER-BOX width (getBoundingClientRect),
+  // not clientWidth: clientWidth excludes the scrollbar, so its value shifts
+  // whenever pages render and the scrollbar appears — that would feed a
+  // redraw loop. 24px = the scroller's p-3 padding.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setPaneWidth(Math.max(320, Math.floor(el.getBoundingClientRect().width - 24)));
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [file?.fileId]);
+
   // A' mode: which pages render. By default only pages carrying highlights
   // (located or text-located) — the pane IS the evidence. "All pages" shows
-  // the full document. Falls back to page 1 when nothing matched.
+  // the full document. Files with NO citations (e.g. the Files-tab preview)
+  // always show the full document and hide the citation UI.
+  const hasCitations = located.length > 0 || misses.length > 0 || textHits.length > 0;
+  const effectiveShowAll = showAllPages || !hasCitations;
   const visiblePages = useMemo(() => {
-    if (showAllPages) return Array.from({ length: numPages }, (_, i) => i + 1);
+    if (effectiveShowAll) return Array.from({ length: numPages }, (_, i) => i + 1);
     const pages = new Set<number>();
     for (const loc of located) pages.add(loc.page);
     for (const h of textHits) pages.add(h.page);
     const list = [...pages].sort((a, b) => a - b);
     return list.length > 0 ? list : numPages > 0 ? [1] : [];
-  }, [showAllPages, numPages, located, textHits]);
+  }, [effectiveShowAll, numPages, located, textHits]);
 
   // Draw every visible page's canvas (text-layer work already happened in the
   // load effect). pagesReady flips so the scroll effect re-centers after a
@@ -293,7 +317,7 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
           if (cancelled) return;
           const pdfPage = await doc.getPage(p);
           const vp1 = pdfPage.getViewport({ scale: 1 });
-          const renderScale = (RENDER_WIDTH * zoom * dpr) / vp1.width;
+          const renderScale = (paneWidth * zoom * dpr) / vp1.width;
           const viewport = pdfPage.getViewport({ scale: renderScale });
           const canvas = pagesRef.current.get(p);
           if (!canvas) continue;
@@ -316,7 +340,7 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
       cancelled = true;
       clearTimeout(id);
     };
-  }, [pdfStatus, visiblePages, zoom, file?.id, file?.fileId]);
+  }, [pdfStatus, visiblePages, zoom, paneWidth, file?.id, file?.fileId]);
 
   // Unified highlight rows: matcher results (DocAI box, refined by the text
   // layer when available) + text-located misses.
@@ -384,16 +408,19 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
   }, [pdfStatus, pagesReady, activeRowKey, rows, visiblePages, zoom]);
 
   return (
-    <div className="flex h-[520px] flex-col overflow-hidden rounded-xl border border-border bg-muted/30">
+    <div
+      className={cn(
+        'flex h-[520px] flex-col overflow-hidden rounded-xl border border-border bg-muted/30',
+        className
+      )}
+      style={style}
+    >
       {file ? (
         <>
-          {/* Header: role badge + file name + full-doc escape hatch */}
+          {/* Header: file name + controls (role badge removed — it ate space) */}
           <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
-                {file.role}
-              </span>
-              <span className="truncate font-mono text-xs text-secondary">{file.title}</span>
+              <span className="truncate font-mono text-xs text-foreground">{file.title}</span>
             </div>
             {file.fileId && (
               <div className="flex shrink-0 items-center gap-1">
@@ -416,9 +443,28 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
                     <ZoomIn className="size-3.5" />
                   </button>
                 </div>
-                <Button variant="ghost" size="sm" className="px-1.5 text-[11px]" onClick={() => setShowAllPages(v => !v)}>
-                  {showAllPages ? 'Cited' : 'All pages'}
-                </Button>
+                {hasCitations && (
+                  <div className="flex items-center gap-1.5" title={showAllPages ? 'Showing all pages' : 'Showing cited pages only'}>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={showAllPages}
+                      onClick={() => setShowAllPages(v => !v)}
+                      className={cn(
+                        'relative h-4 w-7 shrink-0 cursor-pointer rounded-full transition-colors',
+                        showAllPages ? 'bg-primary' : 'bg-border'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'absolute left-0.5 top-0.5 size-3 rounded-full bg-background shadow transition-transform',
+                          showAllPages && 'translate-x-3'
+                        )}
+                      />
+                    </button>
+                    <span className="text-[11px] text-secondary">{showAllPages ? 'All pages' : 'Cited'}</span>
+                  </div>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -428,6 +474,17 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
                 >
                   <ExternalLink className="size-3.5" />
                 </Button>
+                {onClose && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="px-1.5 text-secondary hover:text-foreground"
+                    title="Close pane"
+                    onClick={onClose}
+                  >
+                    <XIcon className="size-3.5" />
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -450,13 +507,18 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
                   return (
                     <div
                       key={p}
-                      className="relative mb-3 bg-white shadow-sm"
+                      className={cn(
+                        'relative mb-3 bg-white shadow-sm',
+                        // Center the card when it doesn't fill the pane; at
+                        // zoom > 1 it overflows and must stay left-anchored
+                        // so the scroller can pan to it.
+                        zoom === 1 && 'mx-auto'
+                      )}
                       style={{
                         // Zoom: the card grows beyond the pane and the scroller
                         // pans; canvases re-render at scale so the zoom is crisp.
-                        // Base width = min(100%, 420px) — fills the pane but
-                        // never exceeds the crisp-render width.
-                        width: zoom > 1 ? `${Math.round(420 * zoom)}px` : 'min(100%, 420px)',
+                        // Base width = the pane's measured inner width.
+                        width: zoom > 1 ? `${Math.round(paneWidth * zoom)}px` : `min(100%, ${paneWidth}px)`,
                         marginBottom: p === visiblePages[visiblePages.length - 1] ? 0 : PAGE_GAP,
                       }}
                     >
@@ -500,7 +562,9 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
             )}
           </div>
 
-          {/* Citation navigation — click to scroll to its page + pulse */}
+          {/* Citation navigation — click to scroll to its page + pulse.
+              Hidden entirely when the file carries no citations. */}
+          {hasCitations && (
           <div className="max-h-40 space-y-1 overflow-y-auto border-t border-border p-2">
             {rows.length === 0 && misses.length === 0 && (
               <p className="px-2 py-1 text-xs text-secondary">No citations for this file.</p>
@@ -536,6 +600,7 @@ export function EvidencePdfViewer({ file }: { file: MindmapFileNode | null }) {
               </p>
             ))}
           </div>
+          )}
         </>
       ) : (
         <p className="p-6 text-center text-xs text-secondary">

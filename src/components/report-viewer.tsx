@@ -55,6 +55,14 @@ const severityBadgeColors: Record<string, string> = {
   low: 'bg-muted text-muted-foreground border-border',
 };
 
+// Solid dot colors for the 3-pane compact rail (severity → dot fill).
+const DOT_COLORS: Record<string, string> = {
+  critical: 'bg-red-500',
+  high: 'bg-orange-500',
+  medium: 'bg-blue-500',
+  low: 'bg-slate-400',
+};
+
 export function ReportViewer({ report }: { report: ReconciliationReport }) {
   const { documentClassifications, groups, unmatchedDocuments, summary, timestamp } = report;
   const [activeSeverities, setActiveSeverities] = useState<Set<string>>(new Set());
@@ -236,7 +244,7 @@ function KPIBox({ label, value, sub, tone }: {
   );
 }
 
-const FINDING_COLUMNS = ['Status', 'Doc', 'Description', 'Expected → Actual', 'Evidence'] as const;
+const FINDING_COLUMNS = ['Status', 'Doc', 'Description', 'Expected', 'Actual', 'Evidence'] as const;
 
 function FindingsTable({ findings, groups, classifications }: {
   findings: Finding[];
@@ -305,7 +313,8 @@ function FindingsTable({ findings, groups, classifications }: {
             {visibleColumns.includes('Status') && <TableHead className="w-[110px]">Status</TableHead>}
             {visibleColumns.includes('Doc') && <TableHead className="w-[140px]">Doc</TableHead>}
             {visibleColumns.includes('Description') && <TableHead>Description</TableHead>}
-            {visibleColumns.includes('Expected → Actual') && <TableHead>Expected → Actual</TableHead>}
+            {visibleColumns.includes('Expected') && <TableHead className="w-[100px] text-right">Expected</TableHead>}
+            {visibleColumns.includes('Actual') && <TableHead className="w-[100px] text-right">Actual</TableHead>}
             {visibleColumns.includes('Evidence') && <TableHead className="w-[130px] text-right">Evidence</TableHead>}
           </TableRow>
         </TableHeader>
@@ -331,12 +340,13 @@ function FindingsTable({ findings, groups, classifications }: {
                   </TableCell>
                 )}
                 {visibleColumns.includes('Description') && (
-                  <TableCell className="min-w-[280px] text-base leading-relaxed">{f.description}</TableCell>
+                  <TableCell className="min-w-[260px] text-sm leading-relaxed">{f.description}</TableCell>
                 )}
-                {visibleColumns.includes('Expected → Actual') && (
-                  <TableCell className="text-sm text-secondary">
-                    {f.expected && f.actual ? `${f.expected} → ${f.actual}` : '-'}
-                  </TableCell>
+                {visibleColumns.includes('Expected') && (
+                  <TableCell className="text-right font-mono whitespace-nowrap">{f.expected ?? '-'}</TableCell>
+                )}
+                {visibleColumns.includes('Actual') && (
+                  <TableCell className="text-right font-mono whitespace-nowrap">{f.actual ?? '-'}</TableCell>
                 )}
                 {visibleColumns.includes('Evidence') && (
                   <TableCell className="text-right whitespace-nowrap">
@@ -393,6 +403,8 @@ function EvidenceButton({ finding, group, classifications }: {
     .filter((f): f is MindmapFileNode => Boolean(f));
   const viewerOpen = visibleFiles.length > 0;
   const multi = viewerOpen && visibleFiles.length >= 2;
+  // 3 panes: the orbit collapses to a slim severity dot-rail (option 1).
+  const threePanes = visibleFiles.length >= 3;
   const hiddenCited = citedFiles.filter(f => !selectedSet.has(f.id));
 
   const toggleFile = (id: number) => {
@@ -425,43 +437,94 @@ function EvidenceButton({ finding, group, classifications }: {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        {/* sm:max-w-6xl (not plain max-w-*) — DialogContent's base sm:max-w-sm
-            would otherwise cap the dialog at 384px. Multi-pane widens it. */}
-        <DialogContent className={cn('sm:max-w-6xl', multi && 'sm:max-w-7xl')}>
+        {/* Near full screen: width = viewport − 2rem, height capped at
+            viewport − 2rem with internal scroll (the base sm:max-w-sm is
+            overridden via the sm: prefix; max-h needs the sm: prefix to
+            survive twMerge too). */}
+        <DialogContent
+          className={cn(
+            // flex-col (overriding the base grid): the title row stays
+            // content-sized and the content row fills the rest of the
+            // near-full-screen height.
+            'sm:max-w-[calc(100vw-2rem)] sm:h-[calc(100vh-2rem)] flex flex-col overflow-y-auto',
+          )}
+        >
           <DialogTitle className="text-h3 font-semibold leading-6">Evidences Mindmap</DialogTitle>
           {/* Split: orbit stays square on the left (compacts for panes); the
               pane grid slides in on the right. Single pane = full-width pane
-              exactly like the old single viewer. */}
-          <div className="flex flex-col gap-4 lg:flex-row">
+              exactly like the old single viewer. min-h-0 lets the row shrink
+              inside the near-full-height dialog. */}
+          <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
             <div
               className={cn(
                 'transition-all duration-300',
                 viewerOpen ? 'shrink-0' : 'w-full',
-                multi ? 'lg:w-[380px]' : viewerOpen ? 'lg:w-[600px]' : ''
+                // Progressive compaction: 1 pane = full square orbit,
+                // 2 panes = compact square, 3 panes = slim dot-rail.
+                threePanes
+                  ? 'lg:w-14'
+                  : multi
+                    ? 'lg:w-[380px]'
+                    : viewerOpen
+                      ? 'lg:w-[600px]'
+                      : ''
               )}
             >
-              <EvidenceMindmap
-                finding={finding}
-                files={citedFiles}
-                unassignedCount={unassigned.length}
-                selectedFileIds={selectedSet}
-                onToggleFile={toggleFile}
-                onClearSelection={() => setSelectedIds([])}
-                compact={multi}
-              />
+              {threePanes ? (
+                /* Dot-rail: each cited file is a severity-colored dot; the
+                    ring marks files open as panes. Same toggle semantics as
+                    the orbit nodes, at a fraction of the width. */
+                <div className="flex h-full w-full flex-col items-center gap-2.5 border-r border-border py-3">
+                  {citedFiles.map(f => {
+                    const selected = selectedSet.has(f.id);
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => toggleFile(f.id)}
+                        title={`${f.title} — ${selected ? 'click to close' : 'click to open'}`}
+                        aria-label={`Toggle ${f.title}`}
+                        aria-pressed={selected}
+                        className={cn(
+                          'size-3 shrink-0 cursor-pointer rounded-full transition-all',
+                          DOT_COLORS[finding.severity] ?? 'bg-slate-400',
+                          selected
+                            ? 'opacity-100 ring-2 ring-foreground ring-offset-2 ring-offset-background'
+                            : 'opacity-50 hover:opacity-100'
+                        )}
+                      />
+                    );
+                  })}
+                  <span className="mt-auto text-[10px] tabular-nums text-secondary">
+                    {visibleFiles.length}/{citedFiles.length}
+                  </span>
+                </div>
+              ) : (
+                <EvidenceMindmap
+                  finding={finding}
+                  files={citedFiles}
+                  unassignedCount={unassigned.length}
+                  selectedFileIds={selectedSet}
+                  onToggleFile={toggleFile}
+                  onClearSelection={() => setSelectedIds([])}
+                  compact={multi}
+                />
+              )}
             </div>
             <div
               className={cn(
-                'min-w-0 overflow-hidden transition-all duration-300',
+                'min-h-0 min-w-0 overflow-hidden transition-all duration-300',
                 viewerOpen ? 'lg:opacity-100' : 'lg:w-0 lg:opacity-0',
-                viewerOpen && (multi ? 'lg:flex-1' : 'lg:w-[520px]')
+                // The pane always fills the space beside the orbit (single or
+                // multi) — no fixed 520px cap that leaves dead space right.
+                viewerOpen && 'lg:flex-1'
               )}
             >
               {viewerOpen && (
-                <div>
+                <div className="h-full">
                   <div
                     className={cn(
-                      'grid gap-3',
+                      'grid h-full gap-3',
                       visibleFiles.length === 1
                         ? 'grid-cols-1'
                         : visibleFiles.length === 2
@@ -470,13 +533,13 @@ function EvidenceButton({ finding, group, classifications }: {
                     )}
                   >
                     {visibleFiles.map(f => (
-                      <EvidencePdfViewer key={f.id} file={f} />
+                      <EvidencePdfViewer key={f.id} file={f} onClose={() => toggleFile(f.id)} className="h-full" />
                     ))}
                   </div>
                   {hiddenCited.length > 0 && (
                     <p className="mt-2 text-xs text-secondary">
                       {hiddenCited.length} more file{hiddenCited.length === 1 ? '' : 's'} in this finding —
-                      click their orbit nodes to swap panes.
+                      click their orbit nodes or file dots to swap panes.
                     </p>
                   )}
                 </div>

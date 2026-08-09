@@ -83,17 +83,41 @@ export function EvidenceMindmap({
   const orbitRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
 
-  // Compact mode (multi-pane): smaller orbit, labels hidden to save width.
-  const radius = compact ? 150 : ORBIT_RADIUS;
+  // Measure the container so the orbit grows to fill it (the Evidences dialog
+  // is near full-screen, so an empty orbit shouldn't float in whitespace).
+  const [dims, setDims] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setDims({ w: r.width, h: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Base radius by mode, grown to fit the container (never below the base).
+  // -32 leaves a ~32px band around the ring — tight enough to fill the
+  // near-full-screen dialog without clipping the node chips at the poles.
+  const baseRadius = compact ? 150 : ORBIT_RADIUS;
+  const radius = Math.max(baseRadius, Math.min(dims.w, dims.h) / 2 - 32);
   const ringSize = radius * 2 - 40;
 
   const SeverityIcon = SEVERITY_ICONS[finding.severity] || Info;
   const centerColors = SEVERITY_CENTER[finding.severity] || SEVERITY_CENTER.low;
 
+  // Rotation runs when the user left it on OR nothing is selected (closing
+  // the last pane via X is a cleared selection — resume the idle rotation).
+  // Derived, not set-in-effect: keeps the lint rule happy.
+  const rotationEnabled = autoRotate || selectedFileIds.size === 0;
+
   // Smooth rotation via requestAnimationFrame + delta time (a fixed setInterval
   // renders at 20fps and feels jittery).
   useEffect(() => {
-    if (!autoRotate || reducedMotion) return;
+    if (!rotationEnabled || reducedMotion) return;
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -104,7 +128,7 @@ export function EvidenceMindmap({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [autoRotate, reducedMotion]);
+  }, [rotationEnabled, reducedMotion]);
 
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
@@ -135,7 +159,7 @@ export function EvidenceMindmap({
     <div
       ref={containerRef}
       onClick={handleContainerClick}
-      className="relative h-[520px] w-full overflow-hidden rounded-xl border border-border bg-muted/30"
+      className="relative h-full min-h-[520px] w-full overflow-hidden rounded-xl border border-border bg-muted/30"
     >
       <div ref={orbitRef} className="absolute inset-0 flex items-center justify-center">
         {/* Orbit ring */}
@@ -210,9 +234,11 @@ export function EvidenceMindmap({
             return (
               <div
                 key={file.id}
-                // Transition only while rotation is frozen (the select sweep);
-                // during auto-rotation updates are per-frame.
-                className={cn('absolute cursor-pointer', !autoRotate && 'transition-all duration-700')}
+                // Transition only while rotation is truly frozen (the select
+                // sweep). During any running rotation the updates are
+                // per-frame — a lingering transition-all makes each frame
+                // animate over 700ms and the orbit looks glitched.
+                className={cn('absolute cursor-pointer', !rotationEnabled && 'transition-all duration-700')}
                 style={{
                   transform: `translate(${p.x}px, ${p.y}px)`,
                   zIndex: isSelected ? 200 : p.zIndex,
