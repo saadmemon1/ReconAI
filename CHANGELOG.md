@@ -389,3 +389,8 @@
 - Evidences dialog is near full screen (100vw−2rem × 100vh−2rem); panes stretch to fill the height.
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
+
+### [2026-08-09] Public-repo preparation
+
+- README rewritten from create-next-app boilerplate into a real project README (features, stack, setup, architecture) with no internal details.
+- History purged of internal/company docs (implementation plan, DocAI architecture guide, control-plane API docs) and env samples (tunnel URL, LAN IP) via git filter-repo. Pre-purge backup: ~/Providus/reconai-history-backup/reconai-full-20260809-1734.bundle.
