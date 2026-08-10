@@ -390,6 +390,12 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Files tab redesign (dense table) — Task 7: empty state
+
+- Files: src/components/file-manager.tsx.
+- Empty workspace now shows a composed state (file icon in a muted circle, "No files yet", one-line copy, Upload File button that opens the upload dialog) instead of a bare sentence. The search empty-result line stays separate.
+- Test: full suite 128 pass; build green.
+
 ### [2026-08-10] Files tab redesign (dense table) — Task 6: always-on toolbar (tried, REJECTED)
 
 - Files: src/components/file-manager.tsx.
