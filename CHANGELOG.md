@@ -390,6 +390,13 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Files tab redesign (dense table) — Task 2: table swap
+
+- Files: src/components/file-manager.tsx (Card list → originui Table), src/lib/file-table.ts (consumed: fileKind, formatFileDate).
+- The card stack is now a bordered dense table: header checkbox (select-all), File column with type icon (FileText/FileImage) + truncating name, "Date Added" column (formatted, tabular), Status column (green "Parsed" chip / live parse progress bar / muted "Not parsed" — the old disabled "Parsed ✓" button is gone), right-aligned Actions (View / Parse / Delete).
+- Review round 1 (user-verified): "Added" → "Date Added"; list keeps ~57% width when the PDF preview opens (flex-[1.3]) and columns are flexible so the table resizes instead of cramming; row padding bumped one notch (py-3.5).
+- Test: full suite 128 pass; build + lint (no new errors) green.
+
 ### [2026-08-10] Files tab redesign (dense table) — Task 1: table utilities
 
 - Files: src/lib/file-table.ts (new), src/lib/__tests__/file-table.test.ts (new).
