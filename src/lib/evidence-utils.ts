@@ -151,6 +151,118 @@ function containsOrdered(text: string, parts: string[]): boolean {
   return true;
 }
 
+/** 1000×1000 page-space box of a segment (from its coordinates). */
+function segmentBox(seg: SegmentLike) {
+  return seg.coordinates
+    ? {
+        page: seg.coordinates.pageNumber,
+        x1: seg.coordinates.xmin,
+        y1: seg.coordinates.ymin,
+        x2: seg.coordinates.xmax,
+        y2: seg.coordinates.ymax,
+      }
+    : null;
+}
+
+/** Cell box in the 1000×1000 page space. IMPORTANT: the normalized `bbox`
+ * is consistently page-relative (×1000) across files, while `pixel_bbox`
+ * is NOT — it matches bbox×1000 for some parses (the PO) but is a
+ * render-pixel space with an unknown DPI for others (the invoice), which
+ * shifted and enlarged every highlight. Use bbox×1000; pixel_bbox only as
+ * a fallback when bbox is absent. */
+function cellBox(cell: SegmentCell) {
+  if (cell.bbox) {
+    return {
+      x1: cell.bbox.x1 * 1000,
+      y1: cell.bbox.y1 * 1000,
+      x2: cell.bbox.x2 * 1000,
+      y2: cell.bbox.y2 * 1000,
+    };
+  }
+  if (cell.pixel_bbox && cell.pixel_bbox.length === 4) {
+    return { x1: cell.pixel_bbox[0], y1: cell.pixel_bbox[1], x2: cell.pixel_bbox[2], y2: cell.pixel_bbox[3] };
+  }
+  return null;
+}
+
+/**
+ * For "grid-estimate" segments DocAI splits the table into EQUAL-width
+ * columns, which misplaces boxes when the real table has uneven columns
+ * (wide description, narrow Qty) — narrow cells render too wide and later
+ * columns sit too far right. Rows are detected (trusted), so re-estimate
+ * only the column boundaries from cell text lengths (sqrt-weighted, which
+ * fits the projection-truth table almost exactly) and keep the cell's
+ * bbox Y.
+ */
+function estimateGridCellBox(cell: SegmentCell, seg: SegmentLike) {
+  const coords = seg.coordinates;
+  const cells = seg.cells ?? [];
+  if (!coords || cells.length === 0 || !cell.bbox) return null;
+  const maxCol = Math.max(...cells.map(c => c.col));
+  if (maxCol < 1) return null;
+  const lens = new Array<number>(maxCol + 1).fill(1);
+  for (const c of cells) {
+    const l = Math.sqrt(normalizeMatchText(c.text || '').length);
+    if (l > lens[c.col]) lens[c.col] = l;
+  }
+  const sum = lens.reduce((a, b) => a + b, 0);
+  const total = coords.xmax - coords.xmin;
+  const bounds: number[] = [coords.xmin];
+  for (let i = 0; i < maxCol; i++) {
+    bounds.push(bounds[i] + (lens[i] / sum) * total);
+  }
+  bounds.push(coords.xmax);
+  return {
+    x1: bounds[cell.col],
+    y1: cell.bbox.y1 * 1000,
+    x2: bounds[cell.col + 1],
+    y2: cell.bbox.y2 * 1000,
+  };
+}
+
+function cellBoxFor(cell: SegmentCell, seg: SegmentLike) {
+  return seg.cellsSource === 'grid-estimate'
+    ? estimateGridCellBox(cell, seg) ?? cellBox(cell)
+    : cellBox(cell);
+}
+
+/**
+ * Full-row highlight for a table citation: union of every cell's box in the
+ * row containing the citation's center (1000×1000 page space). This works
+ * even for scanned PDFs where the rendered text layer is empty — the
+ * segments API knows the table geometry. Returns null when the citation has
+ * no segment or the segment has no cells.
+ */
+export function segmentRowBox(
+  segments: SegmentLike[],
+  loc: Pick<CitationLocation, 'segmentId' | 'x1' | 'y1' | 'x2' | 'y2'>
+): { x1: number; y1: number; x2: number; y2: number } | null {
+  const seg = segments.find(s => s.id === loc.segmentId);
+  if (!seg) return null;
+  const cells = seg.cells ?? [];
+  if (cells.length === 0) return null;
+  const cx = (loc.x1 + loc.x2) / 2;
+  const cy = (loc.y1 + loc.y2) / 2;
+  const rows = new Map<number, { x1: number; y1: number; x2: number; y2: number }>();
+  for (const cell of cells) {
+    const cb = cellBoxFor(cell, seg);
+    if (!cb) continue;
+    const r = rows.get(cell.row);
+    if (r) {
+      r.x1 = Math.min(r.x1, cb.x1);
+      r.y1 = Math.min(r.y1, cb.y1);
+      r.x2 = Math.max(r.x2, cb.x2);
+      r.y2 = Math.max(r.y2, cb.y2);
+    } else {
+      rows.set(cell.row, { ...cb });
+    }
+  }
+  for (const box of rows.values()) {
+    if (cx >= box.x1 && cx <= box.x2 && cy >= box.y1 && cy <= box.y2) return box;
+  }
+  return null;
+}
+
 /**
  * Locate a citation on the document: find the segment (or table cell) whose
  * text matches the citation's quoted content, and return its page-relative
@@ -173,78 +285,6 @@ export function locateCitation(
   // as substrings — otherwise "470" would hit the first cell containing it.
   const fuzzy = single ? parts[0].length >= 3 : true;
 
-  const box = (seg: SegmentLike) =>
-    seg.coordinates
-      ? {
-          page: seg.coordinates.pageNumber,
-          x1: seg.coordinates.xmin,
-          y1: seg.coordinates.ymin,
-          x2: seg.coordinates.xmax,
-          y2: seg.coordinates.ymax,
-        }
-      : null;
-
-  // Cell box in the 1000×1000 page space. IMPORTANT: the normalized `bbox`
-  // is consistently page-relative (×1000) across files, while `pixel_bbox`
-  // is NOT — it matches bbox×1000 for some parses (the PO) but is a
-  // render-pixel space with an unknown DPI for others (the invoice), which
-  // shifted and enlarged every highlight. Use bbox×1000; pixel_bbox only as
-  // a fallback when bbox is absent.
-  const cellBox = (cell: SegmentCell) => {
-    if (cell.bbox) {
-      return {
-        x1: cell.bbox.x1 * 1000,
-        y1: cell.bbox.y1 * 1000,
-        x2: cell.bbox.x2 * 1000,
-        y2: cell.bbox.y2 * 1000,
-      };
-    }
-    if (cell.pixel_bbox && cell.pixel_bbox.length === 4) {
-      return { x1: cell.pixel_bbox[0], y1: cell.pixel_bbox[1], x2: cell.pixel_bbox[2], y2: cell.pixel_bbox[3] };
-    }
-    return null;
-  };
-
-  /**
-   * For "grid-estimate" segments DocAI splits the table into EQUAL-width
-   * columns, which misplaces boxes when the real table has uneven columns
-   * (wide description, narrow Qty) — narrow cells render too wide and later
-   * columns sit too far right. Rows are detected (trusted), so re-estimate
-   * only the column boundaries from cell text lengths (sqrt-weighted, which
-   * fits the projection-truth table almost exactly) and keep the cell's
-   * bbox Y.
-   */
-  const estimateGridCellBox = (cell: SegmentCell, seg: SegmentLike) => {
-    const coords = seg.coordinates;
-    const cells = seg.cells ?? [];
-    if (!coords || cells.length === 0 || !cell.bbox) return null;
-    const maxCol = Math.max(...cells.map(c => c.col));
-    if (maxCol < 1) return null;
-    const lens = new Array<number>(maxCol + 1).fill(1);
-    for (const c of cells) {
-      const l = Math.sqrt(normalizeMatchText(c.text || '').length);
-      if (l > lens[c.col]) lens[c.col] = l;
-    }
-    const sum = lens.reduce((a, b) => a + b, 0);
-    const total = coords.xmax - coords.xmin;
-    const bounds: number[] = [coords.xmin];
-    for (let i = 0; i < maxCol; i++) {
-      bounds.push(bounds[i] + (lens[i] / sum) * total);
-    }
-    bounds.push(coords.xmax);
-    return {
-      x1: bounds[cell.col],
-      y1: cell.bbox.y1 * 1000,
-      x2: bounds[cell.col + 1],
-      y2: cell.bbox.y2 * 1000,
-    };
-  };
-
-  const cellBoxFor = (cell: SegmentCell, seg: SegmentLike) =>
-    seg.cellsSource === 'grid-estimate'
-      ? estimateGridCellBox(cell, seg) ?? cellBox(cell)
-      : cellBox(cell);
-
   // 1) exact cell text (tables) — strongest signal
   if (single) {
     for (const seg of segments) {
@@ -263,7 +303,7 @@ export function locateCitation(
     for (const seg of segments) {
       const md = normalizeMatchText(seg.markdown || '');
       if (md && containsOrdered(md, parts)) {
-        const b = box(seg);
+        const b = segmentBox(seg);
         if (b) return { ...b, segmentId: seg.id, matchedText: seg.markdown || '', needle };
       }
     }

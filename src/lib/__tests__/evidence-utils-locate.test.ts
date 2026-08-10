@@ -4,6 +4,7 @@ import {
   extractCitationNeedle,
   locateCitation,
   locateCitations,
+  segmentRowBox,
   type SegmentLike,
 } from '../evidence-utils';
 
@@ -246,5 +247,59 @@ describe('locateCitations', () => {
     );
     expect(located).toHaveLength(2);
     expect(misses).toEqual(["'nothing here'"]);
+  });
+});
+
+describe('segmentRowBox (full-row highlight expansion)', () => {
+  test('unions every cell of the row containing the citation center', () => {
+    // The '470.00' price cell of row 1 (x 638-776, y 345-380) — the row box
+    // must span all six cells: x 85..914, y 345..380.
+    const row = segmentRowBox(segments, {
+      segmentId: 'p1_e0007',
+      x1: 638, y1: 345, x2: 776, y2: 380,
+    });
+    expect(row).not.toBeNull();
+    expect(row).toEqual({ x1: 85, y1: 345, x2: 914, y2: 380 });
+  });
+
+  test('resolves to the header row when the center is in it', () => {
+    const row = segmentRowBox(segments, {
+      segmentId: 'p1_e0007',
+      x1: 638, y1: 317, x2: 776, y2: 345,
+    });
+    expect(row).not.toBeNull();
+    expect(row).toEqual({ x1: 85, y1: 317, x2: 914, y2: 345 });
+  });
+
+  test('single-cell row returns that cell box', () => {
+    const row = segmentRowBox(segments, {
+      segmentId: 'p1_e0006',
+      x1: 776, y1: 444, x2: 914, y2: 481, // the '294,930' cell, row 4
+    });
+    expect(row).toEqual({ x1: 776, y1: 444, x2: 914, y2: 481 });
+  });
+
+  test('text segment without cells → null', () => {
+    expect(
+      segmentRowBox(segments, {
+        segmentId: 'p1_e0003',
+        x1: 57, y1: 125, x2: 251, y2: 139,
+      })
+    ).toBeNull();
+  });
+
+  test('unknown segment id → null', () => {
+    expect(
+      segmentRowBox(segments, { segmentId: 'nope', x1: 0, y1: 0, x2: 10, y2: 10 })
+    ).toBeNull();
+  });
+
+  test('center outside every row band → null', () => {
+    expect(
+      segmentRowBox(segments, {
+        segmentId: 'p1_e0007',
+        x1: 100, y1: 500, x2: 200, y2: 520, // below both rows
+      })
+    ).toBeNull();
   });
 });
