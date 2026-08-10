@@ -390,6 +390,12 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Files tab redesign (dense table) — Task 6: always-on toolbar (tried, REJECTED)
+
+- Files: src/components/file-manager.tsx.
+- The bulk toolbar was made always-visible with disabled states (to kill the selection layout-jump) — the user rejected it ("nah i liked it the way it was before"): the toolbar MUST keep appearing/disappearing on selection. Reverted to the conditional render; the working tree ended identical to the previous commit, so no code delta shipped. Do not re-propose the always-on toolbar.
+- Test: full suite 128 pass; build green.
+
 ### [2026-08-10] Files tab redesign (dense table) — Task 5: row-click preview + active highlight (kebab tried, rejected)
 
 - Files: src/components/file-manager.tsx.
