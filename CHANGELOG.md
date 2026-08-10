@@ -390,6 +390,12 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Files tab redesign (dense table) — Task 1: table utilities
+
+- Files: src/lib/file-table.ts (new), src/lib/__tests__/file-table.test.ts (new).
+- Pure helpers for the upcoming dense Files table: `fileKind` (pdf/image/other from the extension), `formatFileDate` (Aug 10, 2026 style, blank on invalid), `sortFiles` (name/date/status × asc/desc, non-mutating + stable, missing dates last, status desc = parsed first).
+- Test: 12 unit tests pass (bun test); full suite 128 pass; build green.
+
 ### [2026-08-09] Public-repo preparation
 
 - README rewritten from create-next-app boilerplate into a real project README (features, stack, setup, architecture) with no internal details.
