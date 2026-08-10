@@ -390,6 +390,16 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Evidence viewer: line-level highlights (tasks 1-2)
+
+- Files: src/lib/pdf-lines.ts (new), src/lib/__tests__/pdf-lines.test.ts (new), src/lib/evidence-utils.ts, src/lib/__tests__/evidence-utils-locate.test.ts, src/components/ui/evidence-pdf-viewer.tsx.
+- New pure lib `pdf-lines`: group text-layer items into visual lines by baseline (6pt tolerance in % of page height) and expand a matched fragment to its full line (union box + x-ordered full text). 10 unit tests.
+- The viewer's text-layer pass now expands every citation to its FULL LINE: highlight covers the row, citation labels show the full line text instead of the quote snippet.
+- New `segmentRowBox()` in evidence-utils: unions every cell of the row containing the citation (1000×1000 space) — full-row highlights even for scanned PDFs with no text layer. Priority: text-layer line → segment row → tight box.
+- Fixed the 1000-space → % conversion on the segment path (raw values rendered the highlight at ~8× page width; the auto-scroll then centered on it, scrolling the document out of view — reported as "white screen + giant yellow box").
+- Verified the grouping pipeline against a generated PDF via pdfjs-dist (row merges, expansion returns the full line).
+- Test: full suite 144 pass; build green.
+
 ### [2026-08-10] Files tab: resizable PDF preview + global width + render-race fix
 
 - Files: src/components/file-manager.tsx, src/components/ui/evidence-pdf-viewer.tsx, src/components/dashboard.tsx.
