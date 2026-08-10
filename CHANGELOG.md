@@ -390,6 +390,13 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Files tab redesign (dense table) — Task 5: row-click preview + active highlight (kebab tried, rejected)
+
+- Files: src/components/file-manager.tsx.
+- Clicking anywhere on a row opens the inline PDF preview; the previewing row gets a left accent bar + subtle tint. The per-row actions stay as the inline View / Parse / Delete buttons (they swallow their clicks so they don't trigger the preview).
+- A kebab (⋯) menu consolidating the row actions was built and REJECTED by the user ("kebab idea is bad, i liked it as it was before") — reverted to inline buttons. Final state recorded: inline buttons + clickable rows.
+- Test: full suite 128 pass; build green.
+
 ### [2026-08-10] Files tab redesign (dense table) — Task 4: sortable columns + search
 
 - Files: src/components/file-manager.tsx, src/lib/file-table.ts (sortFiles consumed).
