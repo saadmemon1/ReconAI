@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { Eye } from 'lucide-react';
+import { Check, Copy, Eye, Mail } from 'lucide-react';
 import { ReconciliationReport, Finding, /* LineItem (disabled with the line-items table), */ ReconciliationGroup, DocumentClassification } from '@/engine/reconcile';
 import { renderInlineFormatting } from '@/lib/format-inline';
 import { cn } from '@/lib/utils';
@@ -8,7 +8,7 @@ import { attributeCitations, roleLabel, type MindmapFileNode } from '@/lib/evide
 import { EvidenceMindmap } from './ui/evidence-mindmap';
 import { EvidencePdfViewer } from './ui/evidence-pdf-viewer';
 import { Card } from './ui/card';
-import { Button } from './ui/button';
+import { Button, buttonVariants } from './ui/button';
 import { Input } from './ui/input';
 import { Badge } from './ui/badge';
 import { Dialog, DialogContent, DialogTitle } from './ui/dialog';
@@ -175,6 +175,11 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         </div>
       </Card>
 
+      {/* Supplier follow-up emails (drafted at reconcile time) */}
+      {report.emailDrafts && report.emailDrafts.length > 0 && (
+        <SupplierEmailCard key={report.timestamp} drafts={report.emailDrafts} />
+      )}
+
       {/* Per-Group Line Items — TEMPORARILY DISABLED: the fixed 3-way column
           set (PO/Rec/Inv) doesn't fit non-purchase docs (e.g. logistics).
           Being reworked as a dynamic-columns table; see the LineItemsTable
@@ -237,6 +242,93 @@ function KPIBox({ label, value, sub, tone }: {
 }
 
 const FINDING_COLUMNS = ['Status', 'Doc', 'Description', 'Expected', 'Actual', 'Evidence'] as const;
+
+interface EmailDraft {
+  to: string;
+  subject: string;
+  body: string;
+}
+
+/** One read-only draft: recipient always visible, Copy + open-in-mail-app. */
+function DraftSection({ draft }: { draft: EmailDraft }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${draft.subject}\n\n${draft.body}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard unavailable — nothing else to do.
+    }
+  };
+
+  // RFC 6068: mailto body line breaks must be %0D%0A (CRLF) — bare %0A (LF)
+  // is rejected by Safari's mailto parser (the Gmail web binding) with
+  // "address is invalid", while Mail.app silently tolerates it.
+  const crlf = (s: string) => s.replace(/\r?\n/g, '\r\n');
+  const mailto = `mailto:${draft.to}?subject=${encodeURIComponent(crlf(draft.subject))}&body=${encodeURIComponent(crlf(draft.body))}`;
+
+  return (
+    <div className="rounded-md border border-border p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <Mail className="size-4 text-secondary" />
+        <span className="text-sm font-medium">{draft.to}</span>
+      </div>
+      <label className="mb-1 block text-xs text-secondary">Subject</label>
+      {/* Locked-live fields: editable enough to show a blinking caret and
+          select text, but every mutation (typing, backspace, paste, drop)
+          is blocked at beforeinput — the draft is fixed once composed.
+          The no-op onChange satisfies React's controlled-field contract
+          (value without onChange is a console error) and re-renders the
+          original value back if a mutation ever slips through. */}
+      <Input
+        value={draft.subject}
+        onChange={() => {}}
+        onBeforeInput={e => e.preventDefault()}
+        onDrop={e => e.preventDefault()}
+        className="mb-3"
+      />
+      <label className="mb-1 block text-xs text-secondary">Body</label>
+      <textarea
+        value={draft.body}
+        onChange={() => {}}
+        onBeforeInput={e => e.preventDefault()}
+        onDrop={e => e.preventDefault()}
+        rows={10}
+        className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm leading-relaxed outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      />
+      <div className="mt-3 flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={copy}>
+          {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+          <span className="ml-1.5">{copied ? 'Copied' : 'Copy'}</span>
+        </Button>
+        {/* Anchor styled as a button — nesting a <button> inside <a> is
+            invalid HTML and made the mailto click unreliable. */}
+        <a href={mailto} className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}>
+          Open in mail app
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/** Supplier follow-up emails drafted during reconciliation. */
+function SupplierEmailCard({ drafts }: { drafts: EmailDraft[] }) {
+  return (
+    <Card className="p-6">
+      <h3 className="text-h3 mb-1">Supplier Emails</h3>
+      <p className="mb-4 text-xs text-secondary">
+        Drafted from this reconciliation's findings. Review the recipient, then copy or send.
+      </p>
+      <div className="space-y-4">
+        {drafts.map((d, i) => (
+          <DraftSection key={`${d.to}-${i}`} draft={d} />
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 function FindingsTable({ findings, groups, classifications }: {
   findings: Finding[];
