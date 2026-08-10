@@ -3,6 +3,12 @@ import { reconcile } from '../reconcile';
 
 const mockLLM = (report: object) => async () => JSON.stringify(report);
 
+/** Returns responses in order; the LAST one repeats (so extra calls can't hang). */
+const mockLLMSequence = (responses: unknown[]) => {
+  let i = 0;
+  return async () => JSON.stringify(responses[Math.min(i++, responses.length - 1)]);
+};
+
 test('validates minimum 2 documents', async () => {
   await expect(reconcile({ documents: [{ segments: [], fileName: 'a.pdf' }], modelId: 'x' }, mockLLM({})))
     .rejects.toThrow('Need at least 2');
@@ -149,4 +155,103 @@ test('out-of-range classification index clamps to a safe document', async () => 
 
   // 99 clamps to the last document (FILE-B), -3 clamps to the first (FILE-A).
   expect(result.report.documentClassifications.map(c => c.fileId)).toEqual(['FILE-B', 'FILE-A']);
+});
+
+// --- Supplier emails + email drafts ---
+
+const supplierFixture = (extra: object = {}) => ({
+  documentClassifications: [
+    { document: 1, type: 'purchase_order', fileName: 'po.pdf' },
+    { document: 2, type: 'invoice', fileName: 'inv.pdf' },
+  ],
+  groups: [{
+    id: 'g1', documents: [1, 2], description: 'Set', kpis: {
+      totalPO: 100, totalReceipt: 100, totalInvoice: 120, matchedLineItems: 3,
+      mismatchedLineItems: 1, missingLineItems: 0, extraLineItems: 0, matchRate: 90,
+      overbillingAmount: 20, unsupportedCharges: 0, evidenceGaps: 0,
+    },
+    findings: [{
+      id: 'F1', severity: 'high', category: 'price_mismatch', document: 'inv.pdf',
+      description: 'Unit price charged is higher than PO agreed price',
+      expected: '450', actual: '470', sourceCitations: [],
+    }],
+    lineItems: [],
+  }],
+  unmatchedDocuments: [],
+  summary: 's',
+  currency: 'PKR',
+  supplierEmails: [
+    { groupId: 'g1', businessName: 'ABC Trading', email: 'billing@abc.com' },
+  ],
+  ...extra,
+});
+
+const supplierDocs = () => [
+  { fileId: 'FILE-A', segments: [{ index: 0, content: 'x' }], fileName: 'po.pdf' },
+  { fileId: 'FILE-B', segments: [{ index: 0, content: 'x' }], fileName: 'inv.pdf' },
+];
+
+test('supplierEmails: drops malformed, duplicate, and unknown-group entries', async () => {
+  const report = supplierFixture({
+    supplierEmails: [
+      { groupId: 'g1', businessName: 'ABC Trading', email: 'billing@abc.com' },
+      { groupId: 'g1', businessName: 'ABC Trading', email: 'billing@abc.com' }, // duplicate
+      { groupId: 'g1', email: 'not-an-email' },                                 // malformed
+      { groupId: 'nope', businessName: 'X', email: 'x@y.com' },                 // unknown group
+      { groupId: 'g1', businessName: '  ', email: '  ok@abc.com  ' },           // trims, blank name
+    ],
+  });
+  const { report: r } = await reconcile({ documents: supplierDocs(), modelId: 'x' }, mockLLM(report));
+  expect(r.supplierEmails).toEqual([
+    { groupId: 'g1', businessName: 'ABC Trading', email: 'billing@abc.com' },
+    { groupId: 'g1', businessName: undefined, email: 'ok@abc.com' },
+  ]);
+});
+
+test('generates one email draft per supplier with findings (second LLM call)', async () => {
+  const draft = {
+    subject: 'Invoice discrepancies - PO-2026-0155',
+    body: 'Dear ABC Trading,\n\nWe found discrepancies on the invoice below.\n\nBest regards,',
+  };
+  const { report: r } = await reconcile(
+    { documents: supplierDocs(), modelId: 'x' },
+    mockLLMSequence([supplierFixture(), draft])
+  );
+  expect(r.emailDrafts).toEqual([{ to: 'billing@abc.com', subject: draft.subject, body: draft.body }]);
+});
+
+test('a failed draft never fails the reconcile', async () => {
+  const { report: r } = await reconcile(
+    { documents: supplierDocs(), modelId: 'x' },
+    mockLLMSequence([supplierFixture(), 'this is not json'])
+  );
+  expect(r.emailDrafts).toEqual([]);
+  expect(r.summary).toBeDefined();
+  expect(r.groups).toHaveLength(1);
+});
+
+test('no supplierEmails → no draft call, emailDrafts empty', async () => {
+  const { report: r } = await reconcile(
+    { documents: supplierDocs(), modelId: 'x' },
+    mockLLM(supplierFixture({ supplierEmails: undefined }))
+  );
+  expect(r.emailDrafts).toEqual([]);
+});
+
+test('a supplier whose group has no findings gets no draft', async () => {
+  const report = supplierFixture({
+    supplierEmails: [
+      { groupId: 'g1', businessName: 'ABC Trading', email: 'billing@abc.com' },
+      { groupId: 'g2', businessName: 'Other Co', email: 'hi@other.com' },
+    ],
+    groups: [
+      ...supplierFixture().groups,
+      { id: 'g2', documents: [1, 2], description: 'Empty group', kpis: { totalPO: 0, totalReceipt: 0, totalInvoice: 0, matchedLineItems: 0, mismatchedLineItems: 0, missingLineItems: 0, extraLineItems: 0, matchRate: 0, overbillingAmount: 0, unsupportedCharges: 0, evidenceGaps: 0 }, findings: [], lineItems: [] },
+    ],
+  });
+  const { report: r } = await reconcile(
+    { documents: supplierDocs(), modelId: 'x' },
+    mockLLMSequence([report, { subject: 's', body: 'b' }])
+  );
+  expect(r.emailDrafts).toEqual([{ to: 'billing@abc.com', subject: 's', body: 'b' }]);
 });

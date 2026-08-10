@@ -77,6 +77,13 @@ export interface DocumentClassification {
   fileId?: string;  // stamped post-LLM from the caller's input order
 }
 
+/** Supplier contact extracted from the documents (vendor email for the follow-up email). */
+export interface SupplierEmail {
+  groupId: string;
+  businessName?: string;
+  email: string;
+}
+
 export interface ReconciliationGroup {
   id: string;
   documents: number[];
@@ -94,6 +101,9 @@ export interface ReconciliationReport {
   modelUsed: string;
   timestamp: string;
   currency?: string;
+  supplierEmails?: SupplierEmail[];
+  /** Follow-up emails drafted by a second LLM call (one per supplier with findings). */
+  emailDrafts?: Array<{ to: string; subject: string; body: string }>;
 }
 
 export interface ReconciliationResult {
@@ -111,7 +121,15 @@ export interface LLMCallResult {
 
 /** Strip characters that could break out of prompt framing (F11: fileName injection) */
 export function sanitizeFileName(name: string): string {
-  return name.replace(/["'<>\[\]{}]|[\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
+  return name.replace(/["'<>[\]{}]|[\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim() || 'Unknown';
+}
+
+/** Loose email shape check for supplier addresses extracted from documents. */
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/** Collapse newlines for values interpolated into prompts (supplier names etc.). */
+function oneLine(s: string): string {
+  return s.replace(/[\r\n]+/g, ' ').trim();
 }
 
 function buildReconciliationPrompt(input: ReconciliationInput): string {
@@ -210,6 +228,13 @@ Format each citation EXACTLY like this:
 
 Example: "04_PO-2026-0155.pdf: ordered items table, row 1: 'Unit Price(PKR) 450.00' [reason: agreed unit price]"
 
+### Supplier Emails
+For each group, if any document in the group lists a supplier/vendor contact email address, include ONE entry in "supplierEmails":
+- "groupId": the group's id — must match an id in "groups".
+- "businessName": the supplier's company name as written in the documents.
+- "email": the contact email, copied VERBATIM from the document (e.g. billing@abc-trading.com).
+Only include addresses that literally appear in the documents. If a group has no email, omit its entry. Never invent an address.
+
 ### Tolerances
 - Price and quantity differences under ${tolerance}% of PO value are considered acceptable
 - Rounding differences under $0.50 are acceptable
@@ -269,7 +294,10 @@ Return ONLY valid JSON in this EXACT structure (no markdown, no explanation outs
   ],
   "unmatchedDocuments": [],
   "summary": "Single PO matched with its receipt and invoice. One price discrepancy found. Recommended payable **PKR 7,200**.",
-  "currency": "PKR"
+  "currency": "PKR",
+  "supplierEmails": [
+    { "groupId": "group_1", "businessName": "ABC Trading Co", "email": "billing@abc-trading.com" }
+  ]
 }
 \`\`\`
 
@@ -331,6 +359,27 @@ function validateReport(data: unknown): ReconciliationReport {
       findingIds: li.findingIds || [],
     }));
   }
+
+  // Supplier emails — drop malformed, duplicate, and unknown-group entries.
+  // The address comes from vendor documents (untrusted), so it must pass the
+  // shape check before it is ever shown or drafted to.
+  if (Array.isArray(r.supplierEmails)) {
+    const validGroupIds = new Set(r.groups.map(g => g.id));
+    const seen = new Set<string>();
+    r.supplierEmails = r.supplierEmails.filter(
+      s => s && typeof s.email === 'string' && EMAIL_RE.test(s.email.trim())
+        && typeof s.groupId === 'string' && validGroupIds.has(s.groupId)
+    ).map(s => ({
+      groupId: s.groupId as string,
+      businessName: (typeof s.businessName === 'string' ? s.businessName.trim() : '') || undefined,
+      email: (s.email as string).trim(),
+    })).filter(s => {
+      const k = `${s.groupId}|${s.email}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
   
   return r;
 }
@@ -369,6 +418,52 @@ function withPayableDerivation(summary: string, report: ReconciliationReport): s
     .trim();
 
   return cleaned ? `${cleaned}\n\n${line}` : line;
+}
+
+// === Supplier email drafts (second LLM call, gated on supplierEmails) ===
+
+/**
+ * Build the draft prompt for one supplier/group. All money is formatted by
+ * the engine (whole numbers + currency) — the LLM only writes the copy.
+ */
+function buildEmailDraftPrompt(
+  supplier: SupplierEmail,
+  group: ReconciliationGroup,
+  report: ReconciliationReport
+): string {
+  const cur = report.currency ? `${report.currency} ` : '';
+  const money = (n: number) => `${cur}${formatWhole(n || 0)}`;
+  const docs = report.documentClassifications
+    .filter(c => group.documents.includes(c.document))
+    .map(c => `- ${c.type.replace(/_/g, ' ')}: ${c.fileName}`)
+    .join('\n');
+  const findings = group.findings
+    .map(f =>
+      `- [${f.severity.toUpperCase()}] ${f.description}${f.expected ? ` (expected: ${f.expected}, actual: ${f.actual ?? '?'})` : ''}`
+    )
+    .join('\n');
+  const billed = group.kpis.totalInvoice || 0;
+  const overbilled = (group.kpis.overbillingAmount || 0) + (group.kpis.unsupportedCharges || 0);
+
+  return `You are drafting a professional business email from a procurement/finance team to a supplier.
+
+Supplier: ${oneLine(supplier.businessName || 'the supplier')} <${supplier.email}>
+Documents in this group:
+${docs}
+
+Discrepancies found in the reconciliation:
+${findings}
+
+Group totals: billed ${money(billed)}, overbilled ${money(overbilled)}.
+
+Write a concise, professional email to this supplier summarizing the discrepancies and requesting that they review and correct them.
+
+Rules:
+- Respond with ONLY valid JSON: {"subject": "...", "body": "..."}
+- subject: under 90 characters, factual (e.g. "Invoice discrepancies - PO-2026-0155")
+- body: plain text with \\n line breaks, NO markdown, NO emoji. Structure: greeting to the business, one short intro sentence, one line per discrepancy (severity + description + amounts), a line with the totals, a closing request to review and correct, then "Best regards,". Keep it under 250 words.
+- Never invent numbers, references, or documents not listed above.
+- Neutral, professional tone — factual, not accusatory.`;
 }
 
 // === Main Engine ===
@@ -425,6 +520,28 @@ export async function reconcile(
   if (reasoning) {
     (report as ReconciliationReport & { llmReasoning?: string }).llmReasoning = reasoning;
   }
+
+  // Supplier email drafts — one per supplier whose group has findings. Gated
+  // on supplierEmails (legacy reports and test fixtures lack it → zero extra
+  // LLM calls). A failed draft never fails the reconcile; the report stands.
+  const emailDrafts: Array<{ to: string; subject: string; body: string }> = [];
+  if (report.supplierEmails?.length) {
+    for (const s of report.supplierEmails) {
+      const group = report.groups.find(g => g.id === s.groupId);
+      if (!group || group.findings.length === 0) continue;
+      try {
+        const raw = await llmCall(buildEmailDraftPrompt(s, group, report));
+        const content = typeof raw === 'string' ? raw : raw.content;
+        const parsed = JSON.parse(extractJSON(content)) as { subject?: string; body?: string };
+        if (parsed.subject && parsed.body) {
+          emailDrafts.push({ to: s.email, subject: parsed.subject.slice(0, 200), body: parsed.body });
+        }
+      } catch {
+        // Draft failure is non-fatal.
+      }
+    }
+  }
+  report.emailDrafts = emailDrafts;
   
   const reconcileDuration = Date.now() - reconcileStart;
   
