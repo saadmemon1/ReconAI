@@ -390,6 +390,14 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Evidence viewer: per-citation reasons + classification line removed (task 3)
+
+- Files: src/engine/reconcile.ts (prompt), src/lib/evidence-utils.ts + tests, src/components/ui/evidence-pdf-viewer.tsx, src/components/report-viewer.tsx.
+- Every citation now carries its own brief reason: the prompt REQUIRES the `[reason: ...]` suffix (5-30 chars, e.g. "price 500 vs PO 450"), instruction + example JSON updated. The suffix is metadata after the quote — location matching ignores it.
+- The evidence viewer shows each citation's OWN reason under its line text (user: the finding description was too generic; they want the why behind THAT line). Unlocated citations strip the suffix from their label and show the reason underneath. Legacy citations without a reason render nothing (graceful).
+- The "Classification: Doc N → type" sentence in the Summary card is removed (user request); the Generated timestamp stays.
+- Test: full suite 151 pass; build green. NOTE: reasons appear only on NEW reconciliations (existing reports' citations have no suffix).
+
 ### [2026-08-10] Evidence viewer: line-level highlights (tasks 1-2)
 
 - Files: src/lib/pdf-lines.ts (new), src/lib/__tests__/pdf-lines.test.ts (new), src/lib/evidence-utils.ts, src/lib/__tests__/evidence-utils-locate.test.ts, src/components/ui/evidence-pdf-viewer.tsx.
