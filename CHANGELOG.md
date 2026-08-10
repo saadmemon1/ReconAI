@@ -390,6 +390,14 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Supplier follow-up emails (single LLM call)
+
+- Files: src/engine/reconcile.ts + tests, src/components/report-viewer.tsx.
+- The reconcile prompt now emits `supplierEmails` (per-group vendor contact, verified against the actual document text — invented addresses are replaced by the first real email found via regex, or dropped) AND `emailDrafts` in the SAME JSON response: the model writes one follow-up email per supplier with findings, in the same reasoning context as the findings themselves — single LLM call, drift structurally impossible (a second call was tried first, then removed at the user's direction).
+- Drafts are sanitized (recipient must be a verified supplier email); a deterministic template fills any supplier whose draft is missing so the card is never empty.
+- Report tab gains a Supplier Emails card: recipient always visible, read-only (locked-live) subject/body — blinking caret + selection, but typing/backspace/paste/drop blocked; Copy + Open in mail app (mailto with RFC 6068 %0D%0A line breaks — Safari rejects bare LF with "address is invalid"; the user's machine-level mailto handler (Safari → Gmail) was also diagnosed as the remaining environment factor).
+- Tests: 160 pass; build green.
+
 ### [2026-08-10] Evidence viewer: per-citation reasons + classification line removed (task 3)
 
 - Files: src/engine/reconcile.ts (prompt), src/lib/evidence-utils.ts + tests, src/components/ui/evidence-pdf-viewer.tsx, src/components/report-viewer.tsx.
