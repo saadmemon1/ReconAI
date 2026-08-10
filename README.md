@@ -22,41 +22,29 @@ Upload PO / Receipt / Invoice
 
 ## Architecture
 
+The system is one pipeline: documents in, decisions out.
+
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│  BROWSER  (Next.js 16 / React 19 / Tailwind v4, runs on bun)        │
-│                                                                     │
-│  Dashboard                                                          │
-│  ├─ Files tab        upload · parse · dense table · PDF preview    │
-│  ├─ Reconcile runner model picker · SSE thinking stream · stages    │
-│  └─ Report tab       KPIs · summary · findings · evidence · emails  │
-│        └─ Evidence dialog: orbit mindmap (three.js) + up to 3 PDF   │
-│           panes (pdfjs-dist) with line-level citation highlights    │
-└──────────────┬─────────────────────────────────────────────────────┘
-               │ fetch (cookie: reconai-session, HttpOnly, encrypted JWT)
-┌──────────────▼─────────────────────────────────────────────────────┐
-│  BFF — Next.js API routes (the ONLY path to the outside world)     │
-│                                                                     │
-│  /api/auth/*            signup · signin · signout · session         │
-│  /api/docai/[...path]   whitelisted relay to Providus DocAI         │
-│                         (path allowlist, org header, session token) │
-│  /api/reconcile         SSE stream → LLM provider → report          │
-└───────┬───────────────────────────────┬────────────────────────────┘
-        │                               │
-        │ HTTPS                         │ HTTPS (OpenAI-compatible)
-┌───────▼──────────────┐   ┌────────────▼───────────────────────────┐
-│ PROVIDUS DOCAI       │   │ LLM PROVIDERS                          │
-│ Document Intelligence│   │ ├─ DeepSeek API (deepseek-v4-flash /   │
-│ Layer                │   │ │   deepseek-v4-pro)  — default        │
-│ - auth (better-auth) │   │ └─ LM Studio / local OpenAI-compatible │
-│ - org-scoped files   │   │    server (lmstudio/<model>) — optional│
-│   + workspaces (KB)  │   │                                        │
-│ - document parsing   │   └────────────────────────────────────────┘
-│ - segments API:      │
-│   markdown + geometry │
-│   + table cells       │
-└──────────────────────┘
+┌──────────────┐   ┌────────────────┐   ┌──────────────────────┐   ┌──────────────┐
+│  1 · UPLOAD  │──▶│  2 · PARSE     │──▶│  3 · RECONCILE       │──▶│  4 · REVIEW  │
+│  Files tab   │   │  Providus      │   │  Engine + LLM        │   │  Report tab  │
+│  PDFs/images │   │  DocAI         │   │  one call: report +  │   │  findings ·  │
+│  → workspace │   │  → segments    │   │  findings + email    │   │  evidence ·  │
+│              │   │    (text,      │   │  drafts              │   │  emails      │
+│              │   │    geometry)   │   │                      │   │              │
+└──────────────┘   └────────────────┘   └──────────────────────┘   └──────────────┘
+        │                   │                      │                        │
+        │ BFF proxy         │ segments feed        │ sanitized report       │
+        │ (API routes,      │ BOTH the prompt      │ (engine-derived        │
+        │ auth + path       │ and the evidence     │ figures)               │
+        │ allowlist)        │ viewer               │                        │
 ```
+
+Three one-line flows complete the picture:
+
+- **Evidence**: finding → citation → PDF text layer → line-level highlight (DocAI segment row as fallback)
+- **Emails**: supplier draft (written in the same LLM response as the report) → Copy / open in mail app
+- **Security**: the browser only ever talks to the BFF — no upstream keys reach the client
 
 ### Component map
 
