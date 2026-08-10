@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { ChevronDown, ChevronUp, FileText, FileImage, Search } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, FileImage, GripVertical, Search } from 'lucide-react';
 import { useAuth } from './auth-provider';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -67,6 +67,8 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
   const [uploading, setUploading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+  // Persisted preview width after a drag (null = default flex split).
+  const [previewWidth, setPreviewWidth] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ ids: string[] } | null>(null);
   const [sortKey, setSortKey] = useState<FileSortKey>('status');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -260,6 +262,38 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
     setPreviewFileId(fileId);
   };
 
+  // Drag-to-resize the preview panel. Mousedown on the handle records the
+  // starting width; window mousemove/mouseup drive it (clamped so the list
+  // keeps >= 480px). The width persists for the session once dragged.
+  const startResize = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const panel = previewPanelRef.current;
+    if (!panel) return;
+    const startX = e.clientX;
+    const startWidth = panel.getBoundingClientRect().width;
+    setPreviewWidth(startWidth);
+    const maxWidth = rowRef.current
+      ? rowRef.current.getBoundingClientRect().width - 480
+      : window.innerWidth - 600;
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev: MouseEvent) => {
+      // The handle IS the panel's left edge: dragging LEFT must widen the
+      // panel (startX - ev.clientX > 0), dragging right must narrow it.
+      setPreviewWidth(Math.max(360, Math.min(startWidth + (startX - ev.clientX), maxWidth)));
+    };
+    const onUp = () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   // Bulk parse: send all selected IDs at once, track jobs per file.
   // targetKbId lets completion handlers know whether the user has switched
   // workspaces mid-parse — if so, the completion must NOT touch the new
@@ -352,6 +386,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
   // the bottom — measured, so it never overflows regardless of what sits
   // above the panel (no more guessing at the reserve).
   const previewPanelRef = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   const [previewHeight, setPreviewHeight] = useState<number | null>(null);
   useEffect(() => {
     if (!previewFileId) return;
@@ -371,8 +406,11 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
   }, [previewFileId]);
 
   return (
-    <div className="flex items-start gap-6">
-      <div className="min-w-0 flex-[1.3]">
+    <div className="flex items-start" ref={rowRef}>
+      {/* No row gap: gap-6 applied between ALL items put 24px on each side of
+          the drag handle (a flex item) — the list-to-panel gap read as a 54px
+          handle. The list's pr-5 owns the breathing room instead. */}
+      <div className="min-w-0 flex-[1.3] pr-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-h3">Files</h2>
         <div className="flex items-center gap-2">
@@ -726,20 +764,34 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
       </Dialog>
       </div>
 
-      {/* Inline PDF preview — fills the right half (single pane, no multi-pane
+      {/* Inline PDF preview — fills the right side (single pane, no multi-pane
           here). role is a generic label; the viewer's own header still offers
-          Open-in-new-tab, zoom, and the close button. */}
+          Open-in-new-tab, zoom, and the close button. The drag handle between
+          the list and the panel resizes the split. */}
       {previewNode && (
-        <div
-          ref={previewPanelRef}
-          className="sticky top-[calc(var(--tabbar-h)+16px)] hidden min-w-0 flex-1 lg:block"
-        >
-          <EvidencePdfViewer
-            file={previewNode}
-            onClose={() => setPreviewFileId(null)}
-            style={previewHeight ? { height: previewHeight } : undefined}
-          />
-        </div>
+        <>
+          <div
+            onMouseDown={startResize}
+            title="Drag to resize the preview"
+            aria-hidden="true"
+            className="hidden w-4 shrink-0 cursor-col-resize self-stretch items-center justify-center text-secondary/50 transition-colors hover:text-secondary lg:flex"
+          >
+            <GripVertical className="size-3.5" />
+          </div>
+          <div
+            ref={previewPanelRef}
+            className={`sticky top-[calc(var(--tabbar-h)+16px)] hidden min-w-0 lg:block ${
+              previewWidth ? 'flex-none' : 'flex-1'
+            }`}
+            style={previewWidth ? { width: `${previewWidth}px` } : undefined}
+          >
+            <EvidencePdfViewer
+              file={previewNode}
+              onClose={() => setPreviewFileId(null)}
+              style={previewHeight ? { height: previewHeight } : undefined}
+            />
+          </div>
+        </>
       )}
     </div>
   );

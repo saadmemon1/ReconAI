@@ -308,6 +308,12 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
   useEffect(() => {
     if (pdfStatus !== 'ready' || !file?.fileId || visiblePages.length === 0) return;
     let cancelled = false;
+    // Trailing debounce: during drag-resize the ResizeObserver fires per
+    // frame, and pdfjs throws "Cannot use the same canvas during multiple
+    // render() operations" when a new render starts while the previous one is
+    // still painting that canvas — that threw in the CURRENT (uncancelled)
+    // run and flipped the viewer to "failed to load". Re-rendering only after
+    // the width settles (~120ms quiet) keeps renders serialized.
     const id = setTimeout(async () => {
       setPagesReady(false);
       try {
@@ -315,19 +321,24 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
         const dpr = window.devicePixelRatio || 1;
         for (const p of visiblePages) {
           if (cancelled) return;
-          const pdfPage = await doc.getPage(p);
-          const vp1 = pdfPage.getViewport({ scale: 1 });
-          const renderScale = (paneWidth * zoom * dpr) / vp1.width;
-          const viewport = pdfPage.getViewport({ scale: renderScale });
-          const canvas = pagesRef.current.get(p);
-          if (!canvas) continue;
-          canvas.width = Math.floor(viewport.width);
-          canvas.height = Math.floor(viewport.height);
-          canvas.style.width = '100%';
-          canvas.style.height = 'auto';
-          // pdfjs-dist v6: render takes the canvas element (not a 2d context).
-          await pdfPage.render({ canvas, viewport }).promise;
-          if (cancelled) return;
+          try {
+            const pdfPage = await doc.getPage(p);
+            const vp1 = pdfPage.getViewport({ scale: 1 });
+            const renderScale = (paneWidth * zoom * dpr) / vp1.width;
+            const viewport = pdfPage.getViewport({ scale: renderScale });
+            const canvas = pagesRef.current.get(p);
+            if (!canvas) continue;
+            canvas.width = Math.floor(viewport.width);
+            canvas.height = Math.floor(viewport.height);
+            canvas.style.width = '100%';
+            canvas.style.height = 'auto';
+            // pdfjs-dist v6: render takes the canvas element (not a 2d context).
+            await pdfPage.render({ canvas, viewport }).promise;
+          } catch {
+            // Render abort (canvas reclaimed by a newer redraw) is expected
+            // mid-resize — NEVER an error state; the next redraw repaints.
+            if (cancelled) return;
+          }
         }
         if (cancelled) return;
         setPagesReady(true);
@@ -335,7 +346,7 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
         if (cancelled) return;
         setPdfStatus('error');
       }
-    }, 0);
+    }, 120);
     return () => {
       cancelled = true;
       clearTimeout(id);
@@ -507,18 +518,16 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
                   return (
                     <div
                       key={p}
-                      className={cn(
-                        'relative mb-3 bg-white shadow-sm',
-                        // Center the card when it doesn't fill the pane; at
-                        // zoom > 1 it overflows and must stay left-anchored
-                        // so the scroller can pan to it.
-                        zoom === 1 && 'mx-auto'
-                      )}
+                      className="relative mb-3 bg-white shadow-sm"
                       style={{
                         // Zoom: the card grows beyond the pane and the scroller
                         // pans; canvases re-render at scale so the zoom is crisp.
                         // Base width = the pane's measured inner width.
-                        width: zoom > 1 ? `${Math.round(paneWidth * zoom)}px` : `min(100%, ${paneWidth}px)`,
+                        // At zoom 1 the card fills the scroller edge-to-edge
+                        // (100%) — a centered min(100%, paneWidth) card left
+                        // gray margins on the right when the measured width
+                        // lagged the panel (Files-tab complaint, Aug 2026).
+                        width: zoom > 1 ? `${Math.round(paneWidth * zoom)}px` : '100%',
                         marginBottom: p === visiblePages[visiblePages.length - 1] ? 0 : PAGE_GAP,
                       }}
                     >

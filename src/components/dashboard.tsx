@@ -174,8 +174,10 @@ export function Dashboard() {
         </DialogContent>
       </Dialog>
 
-        {/* Body */}
-        <div className="mx-auto w-full max-w-6xl px-8 py-8">
+        {/* Body — wide cap (1600px) so the PDF preview can use the window on
+            desktop; the old max-w-6xl left a big empty right margin when the
+            preview was open (user: "padding on a global level") */}
+        <div className="mx-auto w-full max-w-[1600px] px-8 py-8">
           {/* Workspace Selection */}
           <section className="mb-8">
             <WorkspaceManager 
