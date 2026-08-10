@@ -390,6 +390,12 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Files tab redesign (dense table) — Task 3 (reordered): delete confirmation
+
+- Files: src/components/file-manager.tsx.
+- All file deletes go through an in-app confirmation dialog now (user-flagged during Task 2 review, pulled ahead of sorting): per-row Delete shows "Delete file?" with the exact filename; the bulk bar shows "Delete N files?". No browser confirm() anywhere in the Files tab; the destructive variant button is soft-red (matching the app's destructive pattern).
+- Test: full suite 128 pass; build green.
+
 ### [2026-08-10] Files tab redesign (dense table) — Task 2: table swap
 
 - Files: src/components/file-manager.tsx (Card list → originui Table), src/lib/file-table.ts (consumed: fileKind, formatFileDate).
