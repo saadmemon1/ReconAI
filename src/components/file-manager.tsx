@@ -503,13 +503,16 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
                   <TableRow
                     key={f.id}
                     data-state={selectedIds.has(f.id) ? 'selected' : undefined}
+                    onClick={() => viewFile(f.id)}
+                    className={previewFileId === f.id ? 'cursor-pointer bg-primary/5' : 'cursor-pointer'}
                   >
-                    <TableCell className="py-3.5">
+                    <TableCell className={previewFileId === f.id ? 'border-l-2 border-primary py-3.5' : 'py-3.5'}>
                       <input
                         type="checkbox"
                         aria-label={`Select ${f.filename}`}
                         checked={selectedIds.has(f.id)}
                         onChange={() => toggleSelect(f.id)}
+                        onClick={e => e.stopPropagation()}
                         className="w-4 h-4 rounded border-border cursor-pointer"
                       />
                     </TableCell>
@@ -550,14 +553,18 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
                     </TableCell>
                     <TableCell className="py-3.5">
                       <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => viewFile(f.id)}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={e => { e.stopPropagation(); viewFile(f.id); }}
+                        >
                           View
                         </Button>
                         {!isParsed && (
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => bulkParse([f.id])}
+                            onClick={e => { e.stopPropagation(); bulkParse([f.id]); }}
                             disabled={isParsing}
                           >
                             {isParsing ? 'Parsing...' : 'Parse'}
@@ -567,7 +574,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
                           variant="ghost"
                           size="sm"
                           className="text-destructive"
-                          onClick={() => setDeleteTarget({ ids: [f.id] })}
+                          onClick={e => { e.stopPropagation(); setDeleteTarget({ ids: [f.id] }); }}
                         >
                           Delete
                         </Button>
