@@ -2,6 +2,8 @@ import { describe, test, expect } from 'bun:test';
 import {
   normalizeMatchText,
   extractCitationNeedle,
+  extractCitationReason,
+  stripCitationReason,
   locateCitation,
   locateCitations,
   segmentRowBox,
@@ -236,6 +238,46 @@ describe('locateCitation', () => {
       { id: 'x', markdown: '76,000', cells: [{ row: 0, col: 0, text: '76,000' }] },
     ];
     expect(locateCitation("'76,000'", noCoords)).toBeNull();
+  });
+});
+
+describe('extractCitationReason / stripCitationReason ([reason: ...] suffix)', () => {
+  test('extracts the reason from a citation with the suffix', () => {
+    expect(
+      extractCitationReason("Invoice: line 5: 'Unit Price: 470' [reason: price 470 vs PO 450]")
+    ).toBe('price 470 vs PO 450');
+  });
+
+  test('null when no reason suffix (legacy citations)', () => {
+    expect(extractCitationReason("Invoice: line 5: 'Unit Price: 470'")).toBeNull();
+    expect(extractCitationReason('plain citation')).toBeNull();
+  });
+
+  test('case-insensitive reason marker', () => {
+    expect(extractCitationReason("PO: row 1: '450' [REASON: agreed price]")).toBe('agreed price');
+  });
+
+  test('empty reason bracket → null', () => {
+    expect(extractCitationReason("PO: row 1: '450' [reason:]")).toBeNull();
+    expect(extractCitationReason("PO: row 1: '450' [reason:   ]")).toBeNull();
+  });
+
+  test('strip removes the suffix and trims', () => {
+    expect(stripCitationReason("Invoice: line 5: 'Unit Price: 470' [reason: price 470 vs PO 450]")).toBe(
+      "Invoice: line 5: 'Unit Price: 470'"
+    );
+  });
+
+  test('strip is a no-op without the suffix', () => {
+    expect(stripCitationReason("Invoice: line 5: 'Unit Price: 470'")).toBe(
+      "Invoice: line 5: 'Unit Price: 470'"
+    );
+  });
+
+  test('a [reason:] marker inside the quote is NOT treated as the suffix', () => {
+    const cite = "PO: terms: 'see [reason: x] clause' [reason: binding clause]";
+    expect(extractCitationReason(cite)).toBe('binding clause');
+    expect(stripCitationReason(cite)).toBe("PO: terms: 'see [reason: x] clause'");
   });
 });
 

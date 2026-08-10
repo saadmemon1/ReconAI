@@ -264,6 +264,23 @@ export function segmentRowBox(
 }
 
 /**
+ * Extract the citation's brief reason — the trailing `[reason: ...]` suffix
+ * the LLM appends to each citation ("... '<quote>' [reason: bills 16 vs PO 12]").
+ * Returns null when absent (legacy citations). The suffix is metadata, never
+ * part of the quote — location matching ignores it.
+ */
+export function extractCitationReason(citation: string): string | null {
+  const m = citation.match(/\[reason:\s*([^\]]*)\]\s*$/i);
+  const reason = m?.[1]?.trim();
+  return reason ? reason : null;
+}
+
+/** Strip the trailing [reason: ...] suffix for display. */
+export function stripCitationReason(citation: string): string {
+  return citation.replace(/\s*\[reason:[^\]]*\]\s*$/i, '').trim();
+}
+
+/**
  * Locate a citation on the document: find the segment (or table cell) whose
  * text matches the citation's quoted content, and return its page-relative
  * PDF-point bounding box. Match order: exact cell text → segment markdown

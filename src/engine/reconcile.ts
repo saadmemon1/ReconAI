@@ -187,7 +187,7 @@ per document pair for the same issue.
 ### Source Citations (IMPORTANT — exact format required)
 For EVERY finding, include EXACT quotes from the document text as evidence.
 Format each citation EXACTLY like this:
-"<document file name>: <location hint>: '<verbatim quote>'"
+"<document file name>: <location hint>: '<verbatim quote>' [reason: <brief reason>]"
 
 - <document file name>: copy the file name from the [DOCUMENT N] headers
   verbatim (e.g. "04_PO-2026-0155.pdf"). Required — the app uses it to
@@ -203,8 +203,12 @@ Format each citation EXACTLY like this:
   quote only the essential fragment that contains the disputed numbers.
   Do NOT truncate with "..." — if you must quote pieces from both ends of a
   long row, put each piece in its own citation entry.
+- [reason: <brief reason>]: REQUIRED — 5-30 characters explaining why THIS
+  line is evidence for the finding (e.g. "bills 16 vs PO 12" or "price 500
+  vs PO 450"). The app shows it next to the citation. It is metadata, NOT
+  part of the quote — never alter the quote to match the reason.
 
-Example: "04_PO-2026-0155.pdf: ordered items table, row 1: 'Unit Price(PKR) 450.00'"
+Example: "04_PO-2026-0155.pdf: ordered items table, row 1: 'Unit Price(PKR) 450.00' [reason: agreed unit price]"
 
 ### Tolerances
 - Price and quantity differences under ${tolerance}% of PO value are considered acceptable
@@ -249,7 +253,7 @@ Return ONLY valid JSON in this EXACT structure (no markdown, no explanation outs
           "description": "Unit price charged is higher than PO agreed price",
           "expected": "450",
           "actual": "470",
-          "sourceCitations": ["Invoice: line 5: 'Unit Price: 470'"]
+          "sourceCitations": ["Invoice: line 5: 'Unit Price: 470' [reason: price 470 vs PO 450]"]
         }
       ],
       "lineItems": [
