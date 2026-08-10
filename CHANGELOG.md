@@ -390,6 +390,12 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Files tab redesign (dense table) — Task 8: accent pass (tried, REJECTED)
+
+- Files: src/app/globals.css, src/components/file-manager.tsx.
+- The global accent pass (deep indigo #4338CA as primary/accent/ring + title bump + indigo checkbox ticks) was built and REJECTED by the user ("maybe revert back to black, i dont like indigo"). Reverted to the committed state (black #111111 primary/accent/ring, original title size, default checkboxes); working tree ended identical to the previous commit, so no code delta shipped. The monochrome minimalist tokens are a deliberate keep — do not re-propose an accent color.
+- Test: full suite 128 pass; build green.
+
 ### [2026-08-10] Files tab redesign (dense table) — Task 7: empty state
 
 - Files: src/components/file-manager.tsx.
