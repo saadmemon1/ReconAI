@@ -390,6 +390,15 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Files tab: resizable PDF preview + global width + render-race fix
+
+- Files: src/components/file-manager.tsx, src/components/ui/evidence-pdf-viewer.tsx, src/components/dashboard.tsx.
+- The Files-tab PDF preview is now drag-resizable: a grip-icon handle between the list and the panel resizes the split (left = wider, right = narrower; list keeps >= 480px, panel >= 360px; the width persists for the session once dragged). Row gap removed so the handle no longer reads as a 54px strip.
+- PDF pages fill the panel edge-to-edge at zoom 1 — the old centered `min(100%, paneWidth)` card left gray margins on the right when the measured width lagged the panel.
+- Render-race fix: pdfjs throws "Cannot use the same canvas during multiple render() operations" in the current (uncancelled) run when a resize redraw starts mid-render — that flipped the viewer to "Failed to load the PDF" after dragging. The redraw is now trailing-debounced (120ms) and render aborts never set the error state (only document-load failures do).
+- App content cap widened max-w-6xl → max-w-[1600px] (user: "padding on a global level" — the centered 1152px column wasted the right side of wide windows when the preview was open).
+- Test: full suite 128 pass; build green.
+
 ### [2026-08-10] Files tab redesign (dense table) — Task 8: accent pass (tried, REJECTED)
 
 - Files: src/app/globals.css, src/components/file-manager.tsx.
