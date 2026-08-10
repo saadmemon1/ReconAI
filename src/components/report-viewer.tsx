@@ -142,14 +142,6 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         <p className="text-base leading-relaxed whitespace-pre-wrap">{renderInlineFormatting(summary)}</p>
 
         <div className="text-xs text-secondary mt-4 space-y-1">
-          <p>
-            Classification: {documentClassifications.map(c => (
-              <span key={c.document}>
-                Doc {c.document} → <strong className="capitalize">{c.type.replace(/_/g, ' ')}</strong>
-                {c !== documentClassifications[documentClassifications.length - 1] ? ' · ' : ''}
-              </span>
-            ))}
-          </p>
           <p>Generated: {new Date(timestamp).toLocaleString()}</p>
         </div>
       </Card>

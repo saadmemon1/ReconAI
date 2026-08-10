@@ -7,9 +7,11 @@ import { Button } from '@/components/ui/button';
 import type { CitationLocation, MindmapFileNode, SegmentLike } from '@/lib/evidence-utils';
 import {
   extractCitationNeedle,
+  extractCitationReason,
   locateCitations,
   normalizeMatchText,
   segmentRowBox,
+  stripCitationReason,
 } from '@/lib/evidence-utils';
 import {
   expandToLine,
@@ -310,7 +312,9 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
               citation: miss[m],
               page: p,
               box: line?.box ?? box,
-              label: line?.text ?? miss[m],
+              // The fallback label is the raw citation — strip its
+              // [reason: ...] metadata suffix for display.
+              label: line?.text ?? stripCitationReason(miss[m]),
             });
           }
         }
@@ -414,6 +418,14 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
 
   // Unified highlight rows: matcher results (DocAI box, refined by the text
   // layer when available) + text-located misses.
+  // Order-preserving map from located/misses back to the original citation
+  // strings (locateCitations splits them). The [reason: ...] suffix travels
+  // on the citation string, so each row can show its own "why this line".
+  const locatedSources = useMemo(() => {
+    const missSet = new Set(misses);
+    return file?.citations.filter(c => !missSet.has(c)) ?? [];
+  }, [file?.citations, misses]);
+
   const rows = useMemo(
     () => [
       ...located.map((loc, i) => ({
@@ -421,10 +433,17 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
         page: loc.page,
         box: refinements[i] ?? { x1: loc.x1 / 10, y1: loc.y1 / 10, x2: loc.x2 / 10, y2: loc.y2 / 10 },
         label: refTexts[i] ?? loc.matchedText,
+        reason: extractCitationReason(locatedSources[i] ?? ''),
       })),
-      ...textHits.map(h => ({ key: h.key, page: h.page, box: h.box, label: h.label })),
+      ...textHits.map(h => ({
+        key: h.key,
+        page: h.page,
+        box: h.box,
+        label: h.label,
+        reason: extractCitationReason(h.citation),
+      })),
     ],
-    [located, textHits, refinements, refTexts]
+    [located, textHits, refinements, refTexts, locatedSources]
   );
   const activeRowKey = activeKey ?? rows[0]?.key ?? null;
 
@@ -656,17 +675,30 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
                 <span className="min-w-0 flex-1">
                   <span className="mr-1 font-mono text-secondary">p{r.page}</span>
                   <span className="line-clamp-2">{r.label}</span>
+                  {r.reason && (
+                    <span className="mt-0.5 block text-[11px] leading-snug text-secondary/80 line-clamp-2">
+                      {r.reason}
+                    </span>
+                  )}
                 </span>
               </button>
             ))}
-            {stillMissed.map((m, i) => (
-              <p
-                key={`miss${i}`}
-                className="border-l-2 border-dashed border-border px-2 py-1 text-xs italic text-secondary/70"
-              >
-                {m}
-              </p>
-            ))}
+            {stillMissed.map((m, i) => {
+              const reason = extractCitationReason(m);
+              return (
+                <p
+                  key={`miss${i}`}
+                  className="border-l-2 border-dashed border-border px-2 py-1 text-xs italic text-secondary/70"
+                >
+                  {stripCitationReason(m)}
+                  {reason && (
+                    <span className="mt-0.5 block text-[11px] not-italic leading-snug text-secondary/80 line-clamp-2">
+                      {reason}
+                    </span>
+                  )}
+                </p>
+              );
+            })}
           </div>
           )}
         </>
