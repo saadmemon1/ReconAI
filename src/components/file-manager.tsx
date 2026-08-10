@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { FileText, FileImage } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, FileImage, Search } from 'lucide-react';
 import { useAuth } from './auth-provider';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -30,7 +30,7 @@ import {
 } from './ui/table';
 import { resolveUploadTarget, Workspace } from '@/lib/workspace-utils';
 import { isFileParsed, FileWithProcessing } from '@/lib/file-status';
-import { fileKind, formatFileDate } from '@/lib/file-table';
+import { fileKind, formatFileDate, sortFiles, type FileSortKey, type SortDir } from '@/lib/file-table';
 import { ModelSelector } from './model-selector';
 import { ProgressiveFluxLoader } from './ui/progressive-flux-loader';
 import { EvidencePdfViewer } from './ui/evidence-pdf-viewer';
@@ -68,6 +68,9 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ ids: string[] } | null>(null);
+  const [sortKey, setSortKey] = useState<FileSortKey>('status');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [search, setSearch] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Upload dialog state
@@ -149,11 +152,32 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
     });
   };
 
+  // Visible rows = search filter + current sort. Sort input carries `parsed`
+  // (derived from the server's processing block) — the sortFiles contract.
+  const visibleFiles = sortFiles(
+    files
+      .filter(f => f.filename.toLowerCase().includes(search.trim().toLowerCase()))
+      .map(f => ({ ...f, parsed: isFileParsed(f) })),
+    sortKey,
+    sortDir
+  );
+
   const toggleAll = () => {
-    if (selectedIds.size === files.length) {
+    if (selectedIds.size === visibleFiles.length && visibleFiles.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(files.map(f => f.id)));
+      setSelectedIds(new Set(visibleFiles.map(f => f.id)));
+    }
+  };
+
+  // Clicking a sortable header: same key toggles direction, a new key resets
+  // to its default (status desc = parsed first — the locked default).
+  const cycleSort = (key: FileSortKey) => {
+    if (key === sortKey) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'status' ? 'desc' : 'asc');
     }
   };
 
@@ -351,7 +375,18 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
       <div className="min-w-0 flex-[1.3]">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-h3">Files</h2>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-secondary" />
+            <Input
+              type="search"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search files..."
+              aria-label="Search files"
+              className="w-56 pl-8"
+            />
+          </div>
           <Button variant="secondary" disabled={uploading} onClick={openUploadDialog}>
             Upload File
           </Button>
@@ -397,6 +432,8 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
 
       {files.length === 0 ? (
         <p className="text-sm text-secondary">No files in this workspace. Upload a file to begin.</p>
+      ) : visibleFiles.length === 0 ? (
+        <p className="text-sm text-secondary">No files match your search.</p>
       ) : (
         <div className="rounded-lg border border-border shadow-sm">
           <Table wrapperClassName="overflow-auto rounded-lg">
@@ -406,19 +443,58 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
                   <input
                     type="checkbox"
                     aria-label="Select all files"
-                    checked={selectedIds.size === files.length && files.length > 0}
+                    checked={selectedIds.size === visibleFiles.length && visibleFiles.length > 0}
                     onChange={toggleAll}
                     className="w-4 h-4 rounded border-border cursor-pointer"
                   />
                 </TableHead>
-                <TableHead className="py-3.5">File</TableHead>
-                <TableHead className="whitespace-nowrap py-3.5">Date Added</TableHead>
-                <TableHead className="py-3.5">Status</TableHead>
+                <TableHead
+                  className="py-3.5"
+                  aria-sort={sortKey === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                >
+                  <button
+                    type="button"
+                    onClick={() => cycleSort('name')}
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                  >
+                    File
+                    {sortKey === 'name' &&
+                      (sortDir === 'asc' ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />)}
+                  </button>
+                </TableHead>
+                <TableHead
+                  className="whitespace-nowrap py-3.5"
+                  aria-sort={sortKey === 'date' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                >
+                  <button
+                    type="button"
+                    onClick={() => cycleSort('date')}
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                  >
+                    Date Added
+                    {sortKey === 'date' &&
+                      (sortDir === 'asc' ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />)}
+                  </button>
+                </TableHead>
+                <TableHead
+                  className="py-3.5"
+                  aria-sort={sortKey === 'status' ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+                >
+                  <button
+                    type="button"
+                    onClick={() => cycleSort('status')}
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                  >
+                    Status
+                    {sortKey === 'status' &&
+                      (sortDir === 'asc' ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />)}
+                  </button>
+                </TableHead>
                 <TableHead className="py-3.5 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {files.map(f => {
+              {visibleFiles.map(f => {
                 const isParsed = parsedIds.has(f.id);
                 const isParsing = parsing.includes(f.id);
                 const job = jobStatuses[f.id];
