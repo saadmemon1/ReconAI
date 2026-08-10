@@ -5,7 +5,18 @@ import { ExternalLink, Loader2, MapPin, XIcon, ZoomIn, ZoomOut } from 'lucide-re
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { Button } from '@/components/ui/button';
 import type { CitationLocation, MindmapFileNode, SegmentLike } from '@/lib/evidence-utils';
-import { extractCitationNeedle, locateCitations, normalizeMatchText } from '@/lib/evidence-utils';
+import {
+  extractCitationNeedle,
+  locateCitations,
+  normalizeMatchText,
+  segmentRowBox,
+} from '@/lib/evidence-utils';
+import {
+  expandToLine,
+  groupItemsIntoLines,
+  type Box,
+  type TextItemWithBox,
+} from '@/lib/pdf-lines';
 import { cn } from '@/lib/utils';
 
 // Per-session caches (re-selecting a file is instant).
@@ -74,7 +85,6 @@ async function getPdfDoc(fileId: string): Promise<PDFDocumentProxy> {
   return promise;
 }
 
-type Box = { x1: number; y1: number; x2: number; y2: number };
 type TextItemLike = { str: string; transform: number[]; width: number; height: number };
 type ViewportLike = {
   width: number;
@@ -83,36 +93,47 @@ type ViewportLike = {
 };
 
 /**
- * Find the text item matching a needle (numeric tokens first, exact then
- * contains) and return its box as percentages of the page. The rendered
- * PDF's own text layer is the ground truth for where text actually sits.
+ * Convert raw text-layer items into boxes in page-percent space (the same
+ * space the highlight overlays use). Rotated/scaled runs are skipped.
  */
-function findTextBox(
-  items: TextItemLike[],
-  needle: string,
-  vp1: ViewportLike
-): Box | null {
-  const tokens = normalizeMatchText(needle)
-    .split(/\s+/)
-    .filter(t => t.length >= 2)
-    .sort((a, b) => Number(/\d/.test(b)) - Number(/\d/.test(a)) || b.length - a.length);
-  const itemBox = (item: TextItemLike): Box | null => {
-    if (!item.width || !item.height) return null;
+function toItemBoxes(items: TextItemLike[], vp1: ViewportLike): TextItemWithBox[] {
+  const out: TextItemWithBox[] = [];
+  for (const item of items) {
+    if (!item.width || !item.height) continue;
     const [aScale] = item.transform;
-    if (aScale <= 0) return null; // rotated/scaled text runs
+    if (aScale <= 0) continue; // rotated/scaled text runs
     // pdfjs v6: convertToViewportPoint returns a [x, y] tuple.
     const bl = vp1.convertToViewportPoint(item.transform[4], item.transform[5]);
     const tr = vp1.convertToViewportPoint(
       item.transform[4] + item.width,
       item.transform[5] - item.height
     );
-    return {
-      x1: (Math.min(bl[0], tr[0]) / vp1.width) * 100,
-      y1: (Math.min(bl[1], tr[1]) / vp1.height) * 100,
-      x2: (Math.max(bl[0], tr[0]) / vp1.width) * 100,
-      y2: (Math.max(bl[1], tr[1]) / vp1.height) * 100,
-    };
-  };
+    out.push({
+      str: item.str,
+      box: {
+        x1: (Math.min(bl[0], tr[0]) / vp1.width) * 100,
+        y1: (Math.min(bl[1], tr[1]) / vp1.height) * 100,
+        x2: (Math.max(bl[0], tr[0]) / vp1.width) * 100,
+        y2: (Math.max(bl[1], tr[1]) / vp1.height) * 100,
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * Find the text item matching a needle (numeric tokens first, exact then
+ * contains) and return its box as percentages of the page. The rendered
+ * PDF's own text layer is the ground truth for where text actually sits.
+ */
+function findTextBox(
+  items: TextItemWithBox[],
+  needle: string
+): Box | null {
+  const tokens = normalizeMatchText(needle)
+    .split(/\s+/)
+    .filter(t => t.length >= 2)
+    .sort((a, b) => Number(/\d/.test(b)) - Number(/\d/.test(a)) || b.length - a.length);
   for (const tok of tokens) {
     const normTok = normalizeMatchText(tok);
     // Variants: the bare number ('185,000' for '185,000.00') and a comma-
@@ -124,8 +145,7 @@ function findTextBox(
       const item =
         items.find(it => normalizeMatchText(it.str) === candidate) ??
         items.find(it => normalizeMatchText(it.str).includes(candidate));
-      const box = item ? itemBox(item) : null;
-      if (box) return box;
+      if (item) return item.box;
     }
     // Digit-equivalence: a numeric token can be split across text runs
     // ('185,000' + '.00') or use different separators — compare digit-only
@@ -135,23 +155,21 @@ function findTextBox(
       if (want.length >= 3) {
         for (let i = 0; i < items.length; i++) {
           const a = items[i];
-          if (!a.width || !a.height) continue;
-          if (a.str.replace(/[^0-9]/g, '') === want) {
-            const box = itemBox(a);
-            if (box) return box;
-          }
+          if (a.box.x2 <= a.box.x1 || a.box.y2 <= a.box.y1) continue;
+          if (a.str.replace(/[^0-9]/g, '') === want) return a.box;
           const b = items[i + 1];
-          if (b && b.width && b.height && a.str.replace(/[^0-9]/g, '') + b.str.replace(/[^0-9]/g, '') === want) {
-            const ba = itemBox(a);
-            const bb = itemBox(b);
-            if (ba && bb) {
-              return {
-                x1: Math.min(ba.x1, bb.x1),
-                y1: Math.min(ba.y1, bb.y1),
-                x2: Math.max(ba.x2, bb.x2),
-                y2: Math.max(ba.y2, bb.y2),
-              };
-            }
+          if (
+            b &&
+            b.box.x2 > b.box.x1 &&
+            b.box.y2 > b.box.y1 &&
+            a.str.replace(/[^0-9]/g, '') + b.str.replace(/[^0-9]/g, '') === want
+          ) {
+            return {
+              x1: Math.min(a.box.x1, b.box.x1),
+              y1: Math.min(a.box.y1, b.box.y1),
+              x2: Math.max(a.box.x2, b.box.x2),
+              y2: Math.max(a.box.y2, b.box.y2),
+            };
           }
         }
       }
@@ -163,11 +181,13 @@ function findTextBox(
 export function EvidencePdfViewer({ file, onClose, className, style }: { file: MindmapFileNode | null; onClose?: () => void; className?: string; style?: React.CSSProperties }) {
   const [located, setLocated] = useState<CitationLocation[]>([]);
   const [misses, setMisses] = useState<string[]>([]);
-  const [textHits, setTextHits] = useState<Array<{ key: string; citation: string; page: number; box: Box }>>([]);
+  const [textHits, setTextHits] = useState<Array<{ key: string; citation: string; page: number; box: Box; label: string }>>([]);
   const [pdfStatus, setPdfStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [numPages, setNumPages] = useState(0);
   // Refined highlight boxes (percentages of the page) from the text layer.
   const [refinements, setRefinements] = useState<Record<number, Box>>({});
+  // Full-line text for each refined citation (from line expansion).
+  const [refTexts, setRefTexts] = useState<Record<number, string>>({});
   const [activeKey, setActiveKey] = useState<string | null>(null);
   // Becomes true once every page canvas has been drawn — the scroll math
   // needs real canvas heights and must not run mid-draw.
@@ -201,12 +221,14 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
         setPdfStatus('idle');
         setNumPages(0);
         setRefinements({});
+        setRefTexts({});
         setTextHits([]);
         setPagesReady(false);
         return;
       }
       setPdfStatus('loading');
       setRefinements({});
+      setRefTexts({});
       setTextHits([]);
       setPagesReady(false);
       try {
@@ -222,9 +244,12 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
 
         // Text-layer pass over every page: refine located boxes and
         // text-locate unmatched citations (a born-digital quote is right there
-        // in the rendered PDF even when segment matching missed).
+        // in the rendered PDF even when segment matching missed). Every match
+        // expands to its FULL VISUAL LINE (groupItemsIntoLines) — the
+        // highlight covers the line and the label shows the line's text.
         const refs: Record<number, Box> = {};
-        const hits: Array<{ key: string; citation: string; page: number; box: Box }> = [];
+        const refTexts: Record<number, string> = {};
+        const hits: Array<{ key: string; citation: string; page: number; box: Box; label: string }> = [];
         const foundMiss = new Set<number>();
         for (let p = 1; p <= doc.numPages; p++) {
           if (cancelled) return;
@@ -241,23 +266,57 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
             } catch {}
             textCacheRef.current.set(p, items);
           }
+          // Line grouping works in box units — here % of the page, so the
+          // lib's default becomes (6 / page-height-pt) * 100. 6pt (vs 3pt)
+          // tolerates real-world baseline jitter from mixed font sizes in
+          // the same table row.
+          const itemBoxes = toItemBoxes(items, vp1);
+          const lines = groupItemsIntoLines(itemBoxes, (6 / vp1.height) * 100);
           for (let i = 0; i < locs.length; i++) {
             const loc = locs[i];
             if (loc.page !== p) continue;
-            const box = findTextBox(items, loc.needle, vp1);
-            if (box) refs[i] = box;
+            const box = findTextBox(itemBoxes, loc.needle);
+            const line = box ? expandToLine(lines, box) : null;
+            if (line) {
+              refs[i] = line.box;
+              refTexts[i] = line.text;
+            } else {
+              // Text layer failed or produced no line (scanned PDF): expand
+              // the citation to its full TABLE ROW via the segments geometry
+              // so the highlight still covers the whole line.
+              const rowBox = loc.segmentId ? segmentRowBox(segments, loc) : null;
+              if (rowBox) {
+                // segmentRowBox is in DocAI's 1000×1000 page space — divide
+                // by 10 to get the % the overlay expects (missing this made
+                // the highlight ~8x the page width and the auto-scroll
+                // centered on it, scrolling the document out of view).
+                refs[i] = {
+                  x1: rowBox.x1 / 10,
+                  y1: rowBox.y1 / 10,
+                  x2: rowBox.x2 / 10,
+                  y2: rowBox.y2 / 10,
+                };
+              } else if (box) refs[i] = box;
+            }
           }
           for (let m = 0; m < miss.length; m++) {
             if (foundMiss.has(m)) continue;
-            const box = findTextBox(items, extractCitationNeedle(miss[m]), vp1);
-            if (box) {
-              foundMiss.add(m);
-              hits.push({ key: `t${m}`, citation: miss[m], page: p, box });
-            }
+            const box = findTextBox(itemBoxes, extractCitationNeedle(miss[m]));
+            if (!box) continue;
+            foundMiss.add(m);
+            const line = expandToLine(lines, box);
+            hits.push({
+              key: `t${m}`,
+              citation: miss[m],
+              page: p,
+              box: line?.box ?? box,
+              label: line?.text ?? miss[m],
+            });
           }
         }
         if (cancelled) return;
         setRefinements(refs);
+        setRefTexts(refTexts);
         setTextHits(hits);
         setPdfStatus('ready');
       } catch {
@@ -361,11 +420,11 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
         key: `m${i}`,
         page: loc.page,
         box: refinements[i] ?? { x1: loc.x1 / 10, y1: loc.y1 / 10, x2: loc.x2 / 10, y2: loc.y2 / 10 },
-        label: loc.matchedText,
+        label: refTexts[i] ?? loc.matchedText,
       })),
-      ...textHits.map(h => ({ key: h.key, page: h.page, box: h.box, label: h.citation })),
+      ...textHits.map(h => ({ key: h.key, page: h.page, box: h.box, label: h.label })),
     ],
-    [located, textHits, refinements]
+    [located, textHits, refinements, refTexts]
   );
   const activeRowKey = activeKey ?? rows[0]?.key ?? null;
 

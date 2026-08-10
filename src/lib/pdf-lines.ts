@@ -35,10 +35,17 @@ const BASELINE_TOLERANCE = 3;
 
 /**
  * Group text items into visual lines: items whose vertical centers fall
- * within BASELINE_TOLERANCE of the line's baseline merge. Zero-size items
+ * within `baselineTolerance` of the line's baseline merge. Zero-size items
  * are skipped. Line text is assembled in x order, not input order.
+ *
+ * The tolerance is in the SAME units as the boxes — callers working in
+ * page-percent space (the viewer) must pass a %-equivalent of their point
+ * tolerance (e.g. 3pt on an 842pt page = 0.36).
  */
-export function groupItemsIntoLines(items: TextItemWithBox[]): TextLine[] {
+export function groupItemsIntoLines(
+  items: TextItemWithBox[],
+  baselineTolerance = BASELINE_TOLERANCE
+): TextLine[] {
   interface WorkingLine extends TextLine {
     items: TextItemWithBox[];
   }
@@ -48,7 +55,7 @@ export function groupItemsIntoLines(items: TextItemWithBox[]): TextLine[] {
     if (box.x2 <= box.x1 || box.y2 <= box.y1) continue;
     const y = (box.y1 + box.y2) / 2;
     // Find the first line whose baseline is within tolerance.
-    const line = lines.find(l => Math.abs(l.y - y) <= BASELINE_TOLERANCE);
+    const line = lines.find(l => Math.abs(l.y - y) <= baselineTolerance);
     if (line) {
       line.box.x1 = Math.min(line.box.x1, box.x1);
       line.box.y1 = Math.min(line.box.y1, box.y1);
