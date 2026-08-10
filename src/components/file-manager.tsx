@@ -1,9 +1,8 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
+import { FileText, FileImage } from 'lucide-react';
 import { useAuth } from './auth-provider';
 import { Button } from './ui/button';
-import { Card } from './ui/card';
-import { Badge } from './ui/badge';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import {
@@ -21,8 +20,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './ui/table';
 import { resolveUploadTarget, Workspace } from '@/lib/workspace-utils';
 import { isFileParsed, FileWithProcessing } from '@/lib/file-status';
+import { fileKind, formatFileDate } from '@/lib/file-table';
 import { ModelSelector } from './model-selector';
 import { ProgressiveFluxLoader } from './ui/progressive-flux-loader';
 import { EvidencePdfViewer } from './ui/evidence-pdf-viewer';
@@ -334,7 +342,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
 
   return (
     <div className="flex items-start gap-6">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-[1.3]">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-h3">Files</h2>
         <div className="flex gap-2">
@@ -384,87 +392,110 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
       {files.length === 0 ? (
         <p className="text-sm text-secondary">No files in this workspace. Upload a file to begin.</p>
       ) : (
-        <div className="space-y-2">
-          <label className="flex items-center gap-3 p-2 text-sm text-secondary cursor-pointer hover:text-foreground">
-            <input
-              type="checkbox"
-              checked={selectedIds.size === files.length && files.length > 0}
-              onChange={toggleAll}
-              className="w-4 h-4 rounded border-border cursor-pointer"
-            />
-            Select all ({files.length} files)
-          </label>
-          
-          {files.map((f, fi) => {
-            const isParsed = parsedIds.has(f.id);
-            const isParsing = parsing.includes(f.id);
-            return (
-            <div key={f.id} className="animate-fade-up" style={{ animationDelay: `${Math.min(fi, 8) * 30}ms` }}>
-            <Card className={`p-3 flex items-center justify-between ${
-              selectedIds.has(f.id) ? 'border-foreground bg-muted' : ''
-            }`}>
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(f.id)}
-                  onChange={() => toggleSelect(f.id)}
-                  className="w-4 h-4 rounded border-border cursor-pointer"
-                />
-                <div>
-                  <p className="text-sm font-medium">
-                    {f.filename}
-                    {isParsed && <Badge variant="outline" className="ml-2 text-xs text-success">Parsed</Badge>}
-                  </p>
-                  {jobStatuses[f.id] && (
-                    <div className="mt-2 max-w-[260px]">
-                      <ProgressiveFluxLoader
-                        value={jobStatuses[f.id].percent}
-                        phases={[
-                          { at: 0, label: 'queued' },
-                          { at: 25, label: 'parsing' },
-                          { at: 80, label: 'finalizing' },
-                          { at: 100, label: 'done' },
-                        ]}
-                        showLabel={false}
-                        loop={false}
-                        className="max-w-none"
-                        barClassName="h-2.5"
-                      />
-                      <span className="sr-only">
-                        Parse: {jobStatuses[f.id].status}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 pl-1">
-                <Button variant="ghost" size="sm" onClick={() => viewFile(f.id)}>
-                  View
-                </Button>
-                {isParsed ? (
-                  <Button variant="ghost" size="sm" disabled className="text-success">
-                    Parsed ✓
-                  </Button>
-                ) : (
-                  <Button 
-                    variant="ghost" size="sm"
-                    onClick={() => bulkParse([f.id])}
-                    disabled={isParsing}
+        <div className="rounded-lg border border-border shadow-sm">
+          <Table wrapperClassName="overflow-auto rounded-lg">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-10 py-3.5">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all files"
+                    checked={selectedIds.size === files.length && files.length > 0}
+                    onChange={toggleAll}
+                    className="w-4 h-4 rounded border-border cursor-pointer"
+                  />
+                </TableHead>
+                <TableHead className="py-3.5">File</TableHead>
+                <TableHead className="whitespace-nowrap py-3.5">Date Added</TableHead>
+                <TableHead className="py-3.5">Status</TableHead>
+                <TableHead className="py-3.5 text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {files.map(f => {
+                const isParsed = parsedIds.has(f.id);
+                const isParsing = parsing.includes(f.id);
+                const job = jobStatuses[f.id];
+                const KindIcon = fileKind(f.filename) === 'image' ? FileImage : FileText;
+                return (
+                  <TableRow
+                    key={f.id}
+                    data-state={selectedIds.has(f.id) ? 'selected' : undefined}
                   >
-                    {isParsing ? 'Parsing...' : 'Parse'}
-                  </Button>
-                )}
-                <Button 
-                  variant="ghost" size="sm"
-                  className="text-destructive"
-                  onClick={() => { deleteFile(f.id); loadFiles(); }}
-                >
-                  Delete
-                </Button>
-              </div>
-            </Card>
-            </div>
-          )})}
+                    <TableCell className="py-3.5">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${f.filename}`}
+                        checked={selectedIds.has(f.id)}
+                        onChange={() => toggleSelect(f.id)}
+                        className="w-4 h-4 rounded border-border cursor-pointer"
+                      />
+                    </TableCell>
+                    <TableCell className="min-w-[140px] py-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <KindIcon className="size-4 shrink-0 text-secondary" />
+                        <span className="truncate text-sm font-medium">{f.filename}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3.5 text-sm text-secondary tabular-nums">
+                      {formatFileDate(f.created_at)}
+                    </TableCell>
+                    <TableCell className="py-3.5">
+                      {job ? (
+                        <div className="max-w-[140px]">
+                          <ProgressiveFluxLoader
+                            value={job.percent}
+                            phases={[
+                              { at: 0, label: 'queued' },
+                              { at: 25, label: 'parsing' },
+                              { at: 80, label: 'finalizing' },
+                              { at: 100, label: 'done' },
+                            ]}
+                            showLabel={false}
+                            loop={false}
+                            className="max-w-none"
+                            barClassName="h-2.5"
+                          />
+                          <span className="sr-only">Parse: {job.status}</span>
+                        </div>
+                      ) : isParsed ? (
+                        <span className="inline-flex items-center rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
+                          Parsed
+                        </span>
+                      ) : (
+                        <span className="text-xs text-secondary">Not parsed</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="py-3.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => viewFile(f.id)}>
+                          View
+                        </Button>
+                        {!isParsed && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => bulkParse([f.id])}
+                            disabled={isParsing}
+                          >
+                            {isParsing ? 'Parsing...' : 'Parse'}
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => deleteFile(f.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 
