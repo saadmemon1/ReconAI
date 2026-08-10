@@ -3,12 +3,6 @@ import { reconcile } from '../reconcile';
 
 const mockLLM = (report: object) => async () => JSON.stringify(report);
 
-/** Returns responses in order; the LAST one repeats (so extra calls can't hang). */
-const mockLLMSequence = (responses: unknown[]) => {
-  let i = 0;
-  return async () => JSON.stringify(responses[Math.min(i++, responses.length - 1)]);
-};
-
 test('validates minimum 2 documents', async () => {
   await expect(reconcile({ documents: [{ segments: [], fileName: 'a.pdf' }], modelId: 'x' }, mockLLM({})))
     .rejects.toThrow('Need at least 2');
@@ -187,7 +181,9 @@ const supplierFixture = (extra: object = {}) => ({
 });
 
 const supplierDocs = () => [
-  { fileId: 'FILE-A', segments: [{ index: 0, content: 'x' }], fileName: 'po.pdf' },
+  // The document text carries the supplier emails — supplierEmails entries
+  // are verified against it (invented addresses are replaced/ dropped).
+  { fileId: 'FILE-A', segments: [{ index: 0, content: 'x billing@abc.com ok@abc.com hi@other.com' }], fileName: 'po.pdf' },
   { fileId: 'FILE-B', segments: [{ index: 0, content: 'x' }], fileName: 'inv.pdf' },
 ];
 
@@ -208,29 +204,90 @@ test('supplierEmails: drops malformed, duplicate, and unknown-group entries', as
   ]);
 });
 
-test('generates one email draft per supplier with findings (second LLM call)', async () => {
+test('verifies supplier emails against the documents and recovers the real address', async () => {
+  // The LLM reported an invented .example address; the document actually
+  // contains the real one — the engine must swap it in, not keep the fake.
+  const docs = [
+    { fileId: 'FILE-A', segments: [{ index: 0, content: 'Contact: sales@kpprint.com.pk' }], fileName: 'po.pdf' },
+    { fileId: 'FILE-B', segments: [{ index: 0, content: 'x' }], fileName: 'inv.pdf' },
+  ];
+  const report = supplierFixture({
+    supplierEmails: [{ groupId: 'g1', businessName: 'Karachi Print', email: 'sales@kpprint.example' }],
+  });
+  const { report: r } = await reconcile({ documents: docs, modelId: 'x' }, mockLLM(report));
+  expect(r.supplierEmails).toEqual([
+    { groupId: 'g1', businessName: 'Karachi Print', email: 'sales@kpprint.com.pk' },
+  ]);
+  // The draft targets the RECOVERED address, never the invented one.
+  expect(r.emailDrafts![0].to).toBe('sales@kpprint.com.pk');
+});
+
+test('drops a supplier email when no address exists in the documents', async () => {
+  const docs = [
+    { fileId: 'FILE-A', segments: [{ index: 0, content: 'no email anywhere' }], fileName: 'po.pdf' },
+    { fileId: 'FILE-B', segments: [{ index: 0, content: 'x' }], fileName: 'inv.pdf' },
+  ];
+  const report = supplierFixture({
+    supplierEmails: [{ groupId: 'g1', businessName: 'X', email: 'made-up@nowhere.test' }],
+  });
+  const { report: r } = await reconcile({ documents: docs, modelId: 'x' }, mockLLM(report));
+  expect(r.supplierEmails).toEqual([]);
+  expect(r.emailDrafts).toEqual([]);
+});
+
+test('keeps the LLM-drafted email when the report includes emailDrafts', async () => {
   const draft = {
-    subject: 'Invoice discrepancies - PO-2026-0155',
-    body: 'Dear ABC Trading,\n\nWe found discrepancies on the invoice below.\n\nBest regards,',
+    to: 'billing@abc.com',
+    subject: 'Discrepancy review - KPP order',
+    body: 'Dear ABC Trading,\n\nPlease review the invoice.\n\nBest regards,',
   };
   const { report: r } = await reconcile(
     { documents: supplierDocs(), modelId: 'x' },
-    mockLLMSequence([supplierFixture(), draft])
+    mockLLM(supplierFixture({ emailDrafts: [draft] }))
   );
-  expect(r.emailDrafts).toEqual([{ to: 'billing@abc.com', subject: draft.subject, body: draft.body }]);
+  expect(r.emailDrafts).toEqual([draft]);
 });
 
-test('a failed draft never fails the reconcile', async () => {
-  const { report: r } = await reconcile(
-    { documents: supplierDocs(), modelId: 'x' },
-    mockLLMSequence([supplierFixture(), 'this is not json'])
-  );
-  expect(r.emailDrafts).toEqual([]);
-  expect(r.summary).toBeDefined();
-  expect(r.groups).toHaveLength(1);
+test('drops invalid emailDrafts and templates the missing supplier', async () => {
+  const report = supplierFixture({
+    emailDrafts: [
+      { to: 'not-a-real@', subject: 'x', body: 'y' },                      // malformed recipient
+      { to: 'other@x.com', subject: 'x', body: 'y' },                      // not a sanitized supplier
+      { to: 'billing@abc.com', subject: '   ', body: 'y' },                // blank subject
+      { to: 'billing@abc.com', subject: 'Good', body: 'Real draft body' }, // valid
+    ],
+  });
+  const { report: r } = await reconcile({ documents: supplierDocs(), modelId: 'x' }, mockLLM(report));
+  expect(r.emailDrafts).toEqual([{ to: 'billing@abc.com', subject: 'Good', body: 'Real draft body' }]);
 });
 
-test('no supplierEmails → no draft call, emailDrafts empty', async () => {
+test('single LLM call: drafts ride the same response as the report', async () => {
+  let calls = 0;
+  const spy = async () => {
+    calls++;
+    return JSON.stringify(supplierFixture({
+      emailDrafts: [{ to: 'billing@abc.com', subject: 'S', body: 'B' }],
+    }));
+  };
+  const { report: r } = await reconcile({ documents: supplierDocs(), modelId: 'x' }, spy);
+  expect(calls).toBe(1);
+  expect(r.emailDrafts).toEqual([{ to: 'billing@abc.com', subject: 'S', body: 'B' }]);
+});
+
+test('falls back to the template when the LLM omits emailDrafts', async () => {
+  const { report: r } = await reconcile({ documents: supplierDocs(), modelId: 'x' }, mockLLM(supplierFixture()));
+  expect(r.emailDrafts).toHaveLength(1);
+  const d = r.emailDrafts![0];
+  expect(d.to).toBe('billing@abc.com');
+  expect(d.subject).toBe('Invoice discrepancies - inv');
+  expect(d.body).toContain('Dear ABC Trading,');
+  expect(d.body).toContain('[HIGH] Unit price charged is higher than PO agreed price');
+  expect(d.body).toContain('(expected: PKR 450, actual: PKR 470)');
+  expect(d.body).toContain('billed PKR 120; overbilled PKR 20');
+  expect(d.body).toContain('Best regards,');
+});
+
+test('no supplierEmails → emailDrafts empty', async () => {
   const { report: r } = await reconcile(
     { documents: supplierDocs(), modelId: 'x' },
     mockLLM(supplierFixture({ supplierEmails: undefined }))
@@ -249,9 +306,6 @@ test('a supplier whose group has no findings gets no draft', async () => {
       { id: 'g2', documents: [1, 2], description: 'Empty group', kpis: { totalPO: 0, totalReceipt: 0, totalInvoice: 0, matchedLineItems: 0, mismatchedLineItems: 0, missingLineItems: 0, extraLineItems: 0, matchRate: 0, overbillingAmount: 0, unsupportedCharges: 0, evidenceGaps: 0 }, findings: [], lineItems: [] },
     ],
   });
-  const { report: r } = await reconcile(
-    { documents: supplierDocs(), modelId: 'x' },
-    mockLLMSequence([report, { subject: 's', body: 'b' }])
-  );
-  expect(r.emailDrafts).toEqual([{ to: 'billing@abc.com', subject: 's', body: 'b' }]);
+  const { report: r } = await reconcile({ documents: supplierDocs(), modelId: 'x' }, mockLLM(report));
+  expect(r.emailDrafts).toEqual([{ to: 'billing@abc.com', subject: 'Invoice discrepancies - inv', body: expect.stringContaining('[HIGH]') }]);
 });

@@ -127,9 +127,33 @@ export function sanitizeFileName(name: string): string {
 /** Loose email shape check for supplier addresses extracted from documents. */
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-/** Collapse newlines for values interpolated into prompts (supplier names etc.). */
-function oneLine(s: string): string {
-  return s.replace(/[\r\n]+/g, ' ').trim();
+/** Scans document text for email-shaped strings (fallback when the LLM's
+ * detected address does not appear in the documents). */
+const EMAIL_SCAN_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+
+/** True when the email (or its @domain, tolerating line-split rendering)
+ * literally appears in the documents' segment text. */
+function emailAppearsInDocuments(email: string, docs: ReconciliationDocument[]): boolean {
+  const lower = email.toLowerCase();
+  const domain = lower.split('@')[1] ?? '';
+  const candidates = [lower, `@${domain}`];
+  return docs.some(d =>
+    d.segments.some(s => {
+      const c = (s.content || '').toLowerCase();
+      return candidates.some(k => c.includes(k));
+    })
+  );
+}
+
+/** First email-shaped string found in the documents, or null. */
+function firstEmailInDocuments(docs: ReconciliationDocument[]): string | null {
+  for (const d of docs) {
+    for (const s of d.segments) {
+      const m = (s.content || '').match(EMAIL_SCAN_RE);
+      if (m) return m[0];
+    }
+  }
+  return null;
 }
 
 function buildReconciliationPrompt(input: ReconciliationInput): string {
@@ -235,6 +259,14 @@ For each group, if any document in the group lists a supplier/vendor contact ema
 - "email": the contact email, copied VERBATIM from the document (e.g. billing@abc-trading.com).
 Only include addresses that literally appear in the documents. If a group has no email, omit its entry. Never invent an address.
 
+### Email Drafts (IMPORTANT — same response, same numbers)
+For each supplierEmails entry whose group has findings, draft ONE follow-up email in the SAME JSON response:
+- "emailDrafts": [ { "to": "<the supplier's email, copied verbatim>", "subject": "...", "body": "..." } ]
+- The email summarizes the findings for that supplier's group in a professional, neutral tone. Use EXACTLY the numbers, severities, and descriptions from your own "findings" — never alter, round, or invent figures.
+- subject: under 90 characters, factual (e.g. "Invoice discrepancies - PO-2026-0155").
+- body: plain text with \n line breaks, NO markdown, NO emoji. Structure: greeting to the business, one short intro sentence, one line per discrepancy, a line with the group totals (billed / overbilled), a closing request to review and correct, then "Best regards,". Under 250 words.
+- If a supplier has no findings, omit its draft. No supplierEmails or no findings → "emailDrafts": [].
+
 ### Tolerances
 - Price and quantity differences under ${tolerance}% of PO value are considered acceptable
 - Rounding differences under $0.50 are acceptable
@@ -297,6 +329,9 @@ Return ONLY valid JSON in this EXACT structure (no markdown, no explanation outs
   "currency": "PKR",
   "supplierEmails": [
     { "groupId": "group_1", "businessName": "ABC Trading Co", "email": "billing@abc-trading.com" }
+  ],
+  "emailDrafts": [
+    { "to": "billing@abc-trading.com", "subject": "Invoice discrepancies - PO-2026-0155", "body": "Dear ABC Trading Co,\n\nWe have identified discrepancies in the reconciliation of the purchase order and its invoice.\n- [HIGH] Unit price charged is higher than PO agreed price (expected: 450, actual: 470)\n\nGroup totals: billed PKR 7,520; overbilled PKR 320.\n\nPlease review and correct the invoice accordingly, and provide a revised credit note or updated invoice.\n\nBest regards,\nProcurement/Finance Team" }
   ]
 }
 \`\`\`
@@ -334,7 +369,7 @@ export function extractJSON(text: string): string {
 
 // === Validation ===
 
-function validateReport(data: unknown): ReconciliationReport {
+function validateReport(data: unknown, inputDocs: ReconciliationDocument[]): ReconciliationReport {
   const r = data as ReconciliationReport;
   
   if (!r.documentClassifications || !Array.isArray(r.groups) || !r.summary) {
@@ -360,25 +395,57 @@ function validateReport(data: unknown): ReconciliationReport {
     }));
   }
 
-  // Supplier emails — drop malformed, duplicate, and unknown-group entries.
-  // The address comes from vendor documents (untrusted), so it must pass the
-  // shape check before it is ever shown or drafted to.
+  // Supplier emails — drop malformed, duplicate, and unknown-group entries,
+  // then VERIFY each address against the actual document text: the LLM must
+  // not invent addresses (e.g. .example placeholders). When the model's
+  // address doesn't appear in the group's documents, recover the first real
+  // email from the document text via regex; drop the entry if none exists.
   if (Array.isArray(r.supplierEmails)) {
     const validGroupIds = new Set(r.groups.map(g => g.id));
     const seen = new Set<string>();
-    r.supplierEmails = r.supplierEmails.filter(
-      s => s && typeof s.email === 'string' && EMAIL_RE.test(s.email.trim())
-        && typeof s.groupId === 'string' && validGroupIds.has(s.groupId)
-    ).map(s => ({
-      groupId: s.groupId as string,
-      businessName: (typeof s.businessName === 'string' ? s.businessName.trim() : '') || undefined,
-      email: (s.email as string).trim(),
-    })).filter(s => {
-      const k = `${s.groupId}|${s.email}`;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
+    const groupDocsOf = (groupId: string): ReconciliationDocument[] => {
+      const group = r.groups.find(g => g.id === groupId);
+      if (!group) return [];
+      return group.documents
+        .map(d => inputDocs[Math.min(Math.max(d - 1, 0), inputDocs.length - 1)])
+        .filter((d): d is ReconciliationDocument => Boolean(d));
+    };
+    r.supplierEmails = r.supplierEmails
+      .filter(
+        s => s && typeof s.email === 'string' && EMAIL_RE.test(s.email.trim())
+          && typeof s.groupId === 'string' && validGroupIds.has(s.groupId)
+      )
+      .map(s => ({
+        groupId: s.groupId as string,
+        businessName: (typeof s.businessName === 'string' ? s.businessName.trim() : '') || undefined,
+        email: (s.email as string).trim(),
+      }))
+      .filter(s => {
+        const k = `${s.groupId}|${s.email}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .map((s): SupplierEmail | null => {
+        const docs = groupDocsOf(s.groupId);
+        if (emailAppearsInDocuments(s.email, docs)) return s;
+        const found = firstEmailInDocuments(docs);
+        return found && EMAIL_RE.test(found) ? { ...s, email: found } : null;
+      })
+      .filter((s): s is SupplierEmail => s !== null);
+  }
+
+  // Email drafts ride the SAME LLM response as the report (no second call —
+  // the model wrote them in one context, so they cannot drift from the
+  // findings). Keep only well-formed entries: the recipient must be one of
+  // the sanitized supplier emails and subject/body must be non-empty.
+  if (Array.isArray(r.emailDrafts)) {
+    const validTo = new Set((r.supplierEmails ?? []).map(s => s.email));
+    r.emailDrafts = r.emailDrafts.filter(
+      d => d && typeof d.to === 'string' && validTo.has(d.to)
+        && typeof d.subject === 'string' && d.subject.trim().length > 0
+        && typeof d.body === 'string' && d.body.trim().length > 0
+    ).map(d => ({ to: d.to, subject: d.subject.slice(0, 200), body: d.body }));
   }
   
   return r;
@@ -420,50 +487,68 @@ function withPayableDerivation(summary: string, report: ReconciliationReport): s
   return cleaned ? `${cleaned}\n\n${line}` : line;
 }
 
-// === Supplier email drafts (second LLM call, gated on supplierEmails) ===
+// === Supplier email drafts (written by the SAME LLM call as the report) ===
 
-/**
- * Build the draft prompt for one supplier/group. All money is formatted by
- * the engine (whole numbers + currency) — the LLM only writes the copy.
- */
-function buildEmailDraftPrompt(
+/** Deterministic fill-in for suppliers whose group has findings but no valid
+ * LLM draft (the model omitted it or the entry was sanitized away) — the
+ * email card is never empty. The email IS the report data, so it can never
+ * drift from the findings. */
+function templateDraft(
   supplier: SupplierEmail,
   group: ReconciliationGroup,
   report: ReconciliationReport
-): string {
+): { to: string; subject: string; body: string } {
   const cur = report.currency ? `${report.currency} ` : '';
   const money = (n: number) => `${cur}${formatWhole(n || 0)}`;
-  const docs = report.documentClassifications
+  const withCur = (s: string) => (/^[\d,.\s-]+$/.test(s) ? `${cur}${s}` : s);
+  const invoiceName = report.documentClassifications
+    .find(c => c.type === 'invoice' && group.documents.includes(c.document))
+    ?.fileName.replace(/\.pdf$/i, '');
+  const docNames = report.documentClassifications
     .filter(c => group.documents.includes(c.document))
-    .map(c => `- ${c.type.replace(/_/g, ' ')}: ${c.fileName}`)
-    .join('\n');
-  const findings = group.findings
+    .map(c => c.fileName);
+  const lines = group.findings
     .map(f =>
-      `- [${f.severity.toUpperCase()}] ${f.description}${f.expected ? ` (expected: ${f.expected}, actual: ${f.actual ?? '?'})` : ''}`
+      `- [${f.severity.toUpperCase()}] ${f.description}${f.expected ? ` (expected: ${withCur(f.expected)}, actual: ${withCur(f.actual ?? '?')})` : ''}`
     )
     .join('\n');
   const billed = group.kpis.totalInvoice || 0;
   const overbilled = (group.kpis.overbillingAmount || 0) + (group.kpis.unsupportedCharges || 0);
+  const body = [
+    `Dear ${supplier.businessName || 'Supplier'},`,
+    '',
+    `We have identified discrepancies in the reconciliation of ${docNames.join(' and ')}.`,
+    lines,
+    '',
+    `Group totals: billed ${money(billed)}; overbilled ${money(overbilled)}.`,
+    '',
+    'Please review and correct the invoice accordingly, and provide a revised credit note or updated invoice.',
+    '',
+    'Best regards,',
+    'Procurement/Finance Team',
+  ].join('\n');
+  return {
+    to: supplier.email,
+    subject: `Invoice discrepancies - ${invoiceName || group.id}`,
+    body,
+  };
+}
 
-  return `You are drafting a professional business email from a procurement/finance team to a supplier.
-
-Supplier: ${oneLine(supplier.businessName || 'the supplier')} <${supplier.email}>
-Documents in this group:
-${docs}
-
-Discrepancies found in the reconciliation:
-${findings}
-
-Group totals: billed ${money(billed)}, overbilled ${money(overbilled)}.
-
-Write a concise, professional email to this supplier summarizing the discrepancies and requesting that they review and correct them.
-
-Rules:
-- Respond with ONLY valid JSON: {"subject": "...", "body": "..."}
-- subject: under 90 characters, factual (e.g. "Invoice discrepancies - PO-2026-0155")
-- body: plain text with \\n line breaks, NO markdown, NO emoji. Structure: greeting to the business, one short intro sentence, one line per discrepancy (severity + description + amounts), a line with the totals, a closing request to review and correct, then "Best regards,". Keep it under 250 words.
-- Never invent numbers, references, or documents not listed above.
-- Neutral, professional tone — factual, not accusatory.`;
+/**
+ * Merge the report's (already sanitized) LLM email drafts with the template
+ * fill-in: every supplier whose group has findings gets exactly one draft —
+ * the model's when present, the deterministic template otherwise.
+ */
+export function fillMissingEmailDrafts(report: ReconciliationReport): Array<{ to: string; subject: string; body: string }> {
+  const drafts = (report.emailDrafts ?? []).slice();
+  for (const s of report.supplierEmails ?? []) {
+    const group = report.groups.find(g => g.id === s.groupId);
+    if (!group || group.findings.length === 0) continue;
+    if (!drafts.some(d => d.to === s.email)) {
+      drafts.push(templateDraft(s, group, report));
+    }
+  }
+  return drafts;
 }
 
 // === Main Engine ===
@@ -505,7 +590,7 @@ export async function reconcile(
   }
   
   // Validate
-  const report = validateReport(parsed);
+  const report = validateReport(parsed, input.documents);
   // Stamp the real DocAI file id onto each classification: the LLM only knows
   // the 1-based document index; fileIds come from the caller's input order.
   // (fileId is optional so legacy persisted reports and tests without it work.)
@@ -521,27 +606,12 @@ export async function reconcile(
     (report as ReconciliationReport & { llmReasoning?: string }).llmReasoning = reasoning;
   }
 
-  // Supplier email drafts — one per supplier whose group has findings. Gated
-  // on supplierEmails (legacy reports and test fixtures lack it → zero extra
-  // LLM calls). A failed draft never fails the reconcile; the report stands.
-  const emailDrafts: Array<{ to: string; subject: string; body: string }> = [];
-  if (report.supplierEmails?.length) {
-    for (const s of report.supplierEmails) {
-      const group = report.groups.find(g => g.id === s.groupId);
-      if (!group || group.findings.length === 0) continue;
-      try {
-        const raw = await llmCall(buildEmailDraftPrompt(s, group, report));
-        const content = typeof raw === 'string' ? raw : raw.content;
-        const parsed = JSON.parse(extractJSON(content)) as { subject?: string; body?: string };
-        if (parsed.subject && parsed.body) {
-          emailDrafts.push({ to: s.email, subject: parsed.subject.slice(0, 200), body: parsed.body });
-        }
-      } catch {
-        // Draft failure is non-fatal.
-      }
-    }
-  }
-  report.emailDrafts = emailDrafts;
+  // Supplier follow-up emails — the LLM wrote the drafts in the SAME response
+  // as the report (single call, single context: no drift possible). Template
+  // fills any supplier whose group has findings but no valid draft, so the
+  // email card is never empty. Gated on supplierEmails (legacy reports lack
+  // it → no drafts).
+  report.emailDrafts = fillMissingEmailDrafts(report);
   
   const reconcileDuration = Date.now() - reconcileStart;
   
