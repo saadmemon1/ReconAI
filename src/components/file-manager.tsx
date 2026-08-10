@@ -431,7 +431,16 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
       )}
 
       {files.length === 0 ? (
-        <p className="text-sm text-secondary">No files in this workspace. Upload a file to begin.</p>
+        <div className="py-16 text-center">
+          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-muted">
+            <FileText className="size-8 text-secondary" />
+          </div>
+          <h3 className="text-h3">No files yet</h3>
+          <p className="mt-1 text-sm text-secondary">Upload a PDF or image to start reconciling.</p>
+          <Button variant="secondary" className="mt-4" onClick={openUploadDialog}>
+            Upload File
+          </Button>
+        </div>
       ) : visibleFiles.length === 0 ? (
         <p className="text-sm text-secondary">No files match your search.</p>
       ) : (
