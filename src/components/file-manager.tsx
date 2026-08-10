@@ -67,6 +67,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
   const [uploading, setUploading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [previewFileId, setPreviewFileId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ ids: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Upload dialog state
@@ -297,12 +298,17 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
     }
   };
 
-  const bulkDelete = async () => {
-    if (!confirm(`Delete ${selectedIds.size} selected file(s)?`)) return;
-    for (const id of selectedIds) {
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    for (const id of deleteTarget.ids) {
       await deleteFile(id);
     }
-    setSelectedIds(new Set());
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      deleteTarget.ids.forEach(id => next.delete(id));
+      return next;
+    });
+    setDeleteTarget(null);
     loadFiles();
   };
 
@@ -361,7 +367,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
                 Parse {unparsedSelected} Selected
               </Button>
             )}
-            <Button variant="ghost" size="sm" className="text-destructive" onClick={bulkDelete}>
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeleteTarget({ ids: [...selectedIds] })}>
               Delete {selectedIds.size} Selected
             </Button>
           </div>
@@ -485,7 +491,7 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
                           variant="ghost"
                           size="sm"
                           className="text-destructive"
-                          onClick={() => deleteFile(f.id)}
+                          onClick={() => setDeleteTarget({ ids: [f.id] })}
                         >
                           Delete
                         </Button>
@@ -591,6 +597,38 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
             >
               {uploading ? 'Uploading...' : 'Upload'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete confirmation — one dialog for per-row and bulk deletes; no
+          browser confirm() anywhere in the Files tab (user-locked pattern). */}
+      <Dialog open={deleteTarget !== null} onOpenChange={o => !o && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {deleteTarget && deleteTarget.ids.length > 1
+                ? `Delete ${deleteTarget.ids.length} files?`
+                : 'Delete file?'}
+            </DialogTitle>
+            <DialogDescription>
+              {deleteTarget && deleteTarget.ids.length === 1 ? (
+                <>
+                  This will permanently delete{' '}
+                  <strong>{files.find(f => f.id === deleteTarget.ids[0])?.filename}</strong> from this
+                  workspace. This action cannot be undone.
+                </>
+              ) : (
+                <>
+                  This will permanently delete {deleteTarget?.ids.length} files from this workspace.
+                  This action cannot be undone.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmDelete}>Delete</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
