@@ -390,6 +390,12 @@
 - Orbit grows to fill its container; with 3 panes it collapses to a slim severity dot-rail (option 1) to give panes width.
 - Orbit rotation resumes when the last pane closes, and per-frame rotation no longer lingers a 700ms transition (glitch fix).
 
+### [2026-08-10] Files tab redesign (dense table) — Task 4: sortable columns + search
+
+- Files: src/components/file-manager.tsx, src/lib/file-table.ts (sortFiles consumed).
+- File / Date Added / Status headers are now clickable sort buttons with an up/down arrow on the active column (click again to flip; new key resets to its default — Status defaults to parsed-first, preserving the locked order). Search input with icon filters by filename; "No files match your search." empty-result state; select-all operates on visible rows only.
+- Test: full suite 128 pass; build green.
+
 ### [2026-08-10] Files tab redesign (dense table) — Task 3 (reordered): delete confirmation
 
 - Files: src/components/file-manager.tsx.
