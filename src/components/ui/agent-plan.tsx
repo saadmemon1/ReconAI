@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   Circle,
@@ -29,6 +29,38 @@ export interface Task {
   level: number;
   dependencies: string[];
   subtasks: Subtask[];
+}
+
+// Clipped log view for streamed subtask text (e.g. live LLM thinking).
+// Height is capped so the panel can't grow unbounded; it auto-follows the
+// latest output while the user stays at the bottom (scrolling up to read
+// history pauses the follow until they scroll back down).
+function LogScroller({ text }: { text: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
+
+  const onScroll = () => {
+    const el = ref.current;
+    if (!el) return;
+    // Within 24px of the bottom → keep following new output.
+    stickToBottom.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
+  }, [text]);
+
+  return (
+    <div
+      ref={ref}
+      onScroll={onScroll}
+      className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words py-1"
+    >
+      {text}
+    </div>
+  );
 }
 
 // Initial demo data (used when no `tasks` prop is provided)
@@ -645,7 +677,7 @@ export default function AgentPlan({ tasks: externalTasks, defaultExpanded }: Age
                                         exit="hidden"
                                         layout
                                       >
-                                        <p className="py-1">{subtask.description}</p>
+                                        <LogScroller text={subtask.description} />
                                         {subtask.tools && subtask.tools.length > 0 && (
                                           <div className="mt-0.5 mb-1 flex flex-wrap items-center gap-1.5">
                                             <span className="text-muted-foreground font-medium">
