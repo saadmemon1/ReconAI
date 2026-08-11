@@ -291,16 +291,14 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
           <summary className="cursor-pointer text-h3 mb-2 flex items-center gap-2 select-none">
             <span className="text-xs text-secondary transition-transform group-open:rotate-90">▶</span>
             {running ? (
-              <span className="inline-flex items-center gap-1" aria-live="polite">
+              <span className="inline-flex items-center gap-2" aria-live="polite">
+                <span className="w-2 h-2 rounded-full bg-foreground animate-pulse" aria-label="working" />
                 <span key={synonymIdx} className="animate-fade-up inline-block">
                   {RECONCILE_SYNONYMS[synonymIdx]}<span className="animate-pulse">…</span>
                 </span>
               </span>
             ) : (
               'Reconcile Progress'
-            )}
-            {running && (
-              <span className="w-2 h-2 rounded-full bg-foreground animate-pulse" aria-label="working" />
             )}
           </summary>
           {planTasks && (
