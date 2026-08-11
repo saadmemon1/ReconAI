@@ -479,3 +479,11 @@
 
 - README rewritten from create-next-app boilerplate into a real project README (features, stack, setup, architecture) with no internal details.
 - History purged of internal/company docs (implementation plan, DocAI architecture guide, control-plane API docs) and env samples (tunnel URL, LAN IP) via git filter-repo. Pre-purge backup: ~/Providus/reconai-history-backup/reconai-full-20260809-1734.bundle.
+
+### [2026-08-11] Reconcile run state survives tab/workspace switches (live store)
+
+- Files: src/lib/run-store.ts (new), src/components/reconcile-runner.tsx.
+- ReconcileRunner's live state (running, error, report, plan tasks, thinking panel) moved out of component state into a per-workspace module store read via useSyncExternalStore. Switching to Files or another workspace and back now re-attaches to the SAME live run — thinking logs and stages keep streaming exactly as if you never switched; a run that finished while away shows the report directly on return.
+- Reports still persist to per-workspace localStorage (no DB by design): the store seeds from it on first access and mirrors completed reports back. Page refresh mid-run still falls back to the last persisted report (accepted limitation).
+- Failed runs now mark the in-progress reasoning subtask as failed (red X) so the plan shows exactly where the run stopped, not a frozen-looking plan.
+- Test: full suite pass; build green; lint no new errors.

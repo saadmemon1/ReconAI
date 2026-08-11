@@ -1,9 +1,9 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Card } from './ui/card';
 import { ReportViewer } from './report-viewer';
 import { ReconciliationReport } from '@/engine/reconcile';
-import { reportStorageKey, LEGACY_REPORT_KEY } from '@/lib/report-storage';
+import { getRunState, setRunState, subscribeRunState, EMPTY_RUN_STATE } from '@/lib/run-store';
 import type { ReconcileRequest } from './dashboard';
 import AgentPlan, { Task } from './ui/agent-plan';
 
@@ -76,33 +76,35 @@ function buildPlanTasks(thinkingText: string): Task[] {
   ];
 }
 
+// Mark the currently in-progress reasoning subtask as failed so the plan
+// shows exactly where the run stopped (the plan renders 'failed' with a
+// red X icon). No-op when nothing is in-progress.
+function failActiveSubtask(plan: Task[] | null): Task[] | null {
+  if (!plan) return plan;
+  return plan.map(t => {
+    if (t.id !== 'reasoning') return t;
+    const idx = t.subtasks.findIndex(s => s.status === 'in-progress');
+    if (idx === -1) return t;
+    return {
+      ...t,
+      subtasks: t.subtasks.map((s, i) => (i === idx ? { ...s, status: 'failed' } : s)),
+    };
+  });
+}
+
 export function ReconcileRunner({ kbId, reconcileRequest }: {
   kbId: string;
   reconcileRequest: ReconcileRequest | null;
 }) {
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState('');
-  // Load this workspace's persisted report (with legacy migration).
-  // The runner is remounted per workspace via key={kbId}, so the initializer
-  // runs fresh on every workspace switch — no effect needed.
-  const [report, setReport] = useState<ReconciliationReport | null>(() => {
-    try {
-      const key = reportStorageKey(kbId);
-      let saved = localStorage.getItem(key);
-      if (saved === null) {
-        saved = localStorage.getItem(LEGACY_REPORT_KEY);
-        if (saved !== null) {
-          localStorage.setItem(key, saved);
-          localStorage.removeItem(LEGACY_REPORT_KEY);
-        }
-      }
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [planTasks, setPlanTasks] = useState<Task[] | null>(null);
-  const [thinkingOpen, setThinkingOpen] = useState(false);
+  // Live run state lives in the module-level store (per kbId) so a run
+  // survives tab/workspace switches: remounting re-attaches to the same
+  // thinking logs / plan / report instead of starting from a blank slate.
+  const runState = useSyncExternalStore(
+    subscribeRunState,
+    () => getRunState(kbId),
+    () => EMPTY_RUN_STATE,
+  );
+  const { running, error, report, planTasks, thinkingOpen } = runState;
   const [synonymIdx, setSynonymIdx] = useState(0);
   const lastNonce = useRef(0);
 
@@ -115,16 +117,19 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
     return () => clearInterval(id);
   }, [running]);
 
-  const run = async (fileIds: string[], requestedModelId: string) => {
+  const run = async (fileIds: string[], requestedModelId: string, runKbId: string) => {
     if (fileIds.length < 2) {
-      setError('Need at least 2 parsed documents to reconcile.');
+      setRunState(runKbId, s => ({ ...s, error: 'Need at least 2 parsed documents to reconcile.' }));
       return;
     }
-    setRunning(true);
-    setError('');
-    setReport(null);
-    setPlanTasks(buildPlanTasks(''));
-    setThinkingOpen(true); // auto-open while streaming
+    setRunState(runKbId, s => ({
+      ...s,
+      running: true,
+      error: '',
+      report: null,
+      planTasks: buildPlanTasks(''),
+      thinkingOpen: true, // auto-open while streaming
+    }));
 
     try {
       // Model comes from the Files tab selector; fall back to DeepSeek V4 Flash
@@ -149,8 +154,7 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
         const data = await res.json();
         const r = data.report;
         if (!r) throw new Error('Reconciliation returned no report');
-        setReport(r);
-        localStorage.setItem(reportStorageKey(kbId), JSON.stringify(r));
+        setRunState(runKbId, s => ({ ...s, report: r }));
         return;
       }
 
@@ -179,82 +183,103 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
             // Light up the matching subtask: mark all subtasks up to and
             // including `stage` as completed except the stage itself, which
             // stays in-progress until the next stage fires (or the report lands)
-            setPlanTasks(prev => {
-              if (!prev) return prev;
-              return prev.map(t => {
-                if (t.id !== 'reasoning') return t;
-                const targetIdx = t.subtasks.findIndex(s => s.id === msg.stage);
-                if (targetIdx === -1) return t;
-                return {
-                  ...t,
-                  subtasks: t.subtasks.map((s, i) => i < targetIdx
-                    ? { ...s, status: 'completed' }
-                    : i === targetIdx
-                      ? { ...s, status: 'in-progress' }
-                      : s),
-                };
-              });
+            setRunState(runKbId, s => {
+              if (!s.planTasks) return s;
+              return {
+                ...s,
+                planTasks: s.planTasks.map(t => {
+                  if (t.id !== 'reasoning') return t;
+                  const targetIdx = t.subtasks.findIndex(su => su.id === msg.stage);
+                  if (targetIdx === -1) return t;
+                  return {
+                    ...t,
+                    subtasks: t.subtasks.map((su, i) => i < targetIdx
+                      ? { ...su, status: 'completed' }
+                      : i === targetIdx
+                        ? { ...su, status: 'in-progress' }
+                        : su),
+                  };
+                }),
+              };
             });
           } else if (msg.type === 'thinking' && msg.text) {
             // Append the streamed text to the subtask that is CURRENTLY
             // in-progress (follows the stage events), not always the first
             // one. Do NOT rebuild the plan, or per-step stage progress
             // would be wiped on every chunk.
-            setPlanTasks(prev => {
-              if (!prev) return prev;
-              const reason = prev.find(t => t.id === 'reasoning');
-              if (!reason) return prev;
-              const activeIdx = reason.subtasks.findIndex(s => s.status === 'in-progress');
+            setRunState(runKbId, s => {
+              if (!s.planTasks) return s;
+              const reason = s.planTasks.find(t => t.id === 'reasoning');
+              if (!reason) return s;
+              const activeIdx = reason.subtasks.findIndex(su => su.status === 'in-progress');
               const targetIdx = activeIdx === -1 ? 0 : activeIdx;
               const old = reason.subtasks[targetIdx]?.description || '';
               const next = old === 'Waiting for model output…' ? msg.text! : old + msg.text!;
-              return prev.map(t => t.id !== 'reasoning' ? t : {
-                ...t,
-                subtasks: t.subtasks.map((s, i) => i === targetIdx
-                  ? { ...s, description: next.slice(-8000) }
-                  : s),
-              });
+              return {
+                ...s,
+                planTasks: s.planTasks.map(t => t.id !== 'reasoning' ? t : {
+                  ...t,
+                  subtasks: t.subtasks.map((su, i) => i === targetIdx
+                    ? { ...su, description: next.slice(-8000) }
+                    : su),
+                }),
+              };
             });
           } else if (msg.type === 'progress' && typeof msg.chars === 'number') {
             // Live character count while the model writes the report —
             // keeps the final "Preparing report" stage visibly moving
-            setPlanTasks(prev => {
-              if (!prev) return prev;
-              return prev.map(t => t.id !== 'reasoning' ? t : {
-                ...t,
-                subtasks: t.subtasks.map((s, i) => i === 5
-                  ? { ...s, description: `Writing report JSON… ${msg.chars!.toLocaleString()} chars` }
-                  : s),
-              });
+            setRunState(runKbId, s => {
+              if (!s.planTasks) return s;
+              return {
+                ...s,
+                planTasks: s.planTasks.map(t => t.id !== 'reasoning' ? t : {
+                  ...t,
+                  subtasks: t.subtasks.map((su, i) => i === 5
+                    ? { ...su, description: `Writing report JSON… ${msg.chars!.toLocaleString()} chars` }
+                    : su),
+                }),
+              };
             });
           } else if (msg.type === 'report' && msg.report) {
-            setReport(msg.report);
-            setPlanTasks(prev => {
-              if (!prev) return prev;
-              return prev.map(t => t.id === 'reasoning' || t.id === 'report'
-                ? { ...t, status: 'completed', subtasks: t.subtasks.map(s => ({ ...s, status: 'completed' })) }
-                : t);
-            });
-            localStorage.setItem(reportStorageKey(kbId), JSON.stringify(msg.report));
+            const finishedReport = msg.report; // narrow for the closure
+            setRunState(runKbId, s => ({
+              ...s,
+              report: finishedReport,
+              planTasks: s.planTasks
+                ? s.planTasks.map(t => t.id === 'reasoning' || t.id === 'report'
+                    ? { ...t, status: 'completed', subtasks: t.subtasks.map(su => ({ ...su, status: 'completed' })) }
+                    : t)
+                : s.planTasks,
+            }));
           } else if (msg.type === 'error') {
             throw new Error(msg.message || 'Reconciliation failed');
           }
         }
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Reconciliation failed');
+      const message = err instanceof Error ? err.message : 'Reconciliation failed';
+      setRunState(runKbId, s => ({
+        ...s,
+        error: message,
+        running: false,
+        // Show where the run stopped: mark the in-progress subtask as failed
+        // (the plan renders 'failed' with a red X) — a frozen-looking plan
+        // with a plain error banner made failures hard to read.
+        planTasks: failActiveSubtask(s.planTasks),
+      }));
     } finally {
-      setRunning(false);
-      setThinkingOpen(false); // collapse when done — report starts at KPIs
+      setRunState(runKbId, s => ({ ...s, running: false, thinkingOpen: false })); // collapse when done — report starts at KPIs
     }
   };
 
-  // Auto-run when a reconcile request arrives from the Files tab
+  // Auto-run when a reconcile request arrives from the Files tab.
+  // kbId never changes within a mount (runner is remounted per workspace
+  // via key={kbId}), so it's safe as a dependency.
   useEffect(() => {
     if (!reconcileRequest || reconcileRequest.nonce === lastNonce.current) return;
     lastNonce.current = reconcileRequest.nonce;
-    run(reconcileRequest.fileIds, reconcileRequest.modelId);
-  }, [reconcileRequest]);
+    run(reconcileRequest.fileIds, reconcileRequest.modelId, kbId);
+  }, [reconcileRequest, kbId]);
 
   return (
     <div>
@@ -262,7 +287,7 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
 
       {/* Live reconcile pipeline (streamed during reconciliation) */}
       {(running || planTasks) && (
-        <details className="group mb-8" open={thinkingOpen} onToggle={e => setThinkingOpen((e.target as HTMLDetailsElement).open)}>
+        <details className="group mb-8" open={thinkingOpen} onToggle={e => setRunState(kbId, s => ({ ...s, thinkingOpen: (e.target as HTMLDetailsElement).open }))}>
           <summary className="cursor-pointer text-h3 mb-2 flex items-center gap-2 select-none">
             <span className="text-xs text-secondary transition-transform group-open:rotate-90">▶</span>
             {running ? (
