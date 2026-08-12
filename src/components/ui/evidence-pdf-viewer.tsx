@@ -8,10 +8,12 @@ import type { CitationLocation, MindmapFileNode, SegmentLike } from '@/lib/evide
 import {
   extractCitationNeedle,
   extractCitationReason,
+  findTableRow,
   locateCitations,
   normalizeMatchText,
   segmentRowBox,
   stripCitationReason,
+  tableRowText,
 } from '@/lib/evidence-utils';
 import {
   expandToLine,
@@ -277,6 +279,33 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
           for (let i = 0; i < locs.length; i++) {
             const loc = locs[i];
             if (loc.page !== p) continue;
+            // Table citations: prefer the full-height ROW band from the
+            // segments geometry. The text-layer line path collapses every
+            // cell of a row into one dwarf box (and its label shows the
+            // joined row text) — the band is the same full-width row but
+            // with the row's real visual height.
+            const seg = loc.segmentId ? segments.find(s => s.id === loc.segmentId) : null;
+            const rowBox = seg && (seg.cells?.length ?? 0) > 0 ? segmentRowBox(segments, loc) : null;
+            if (rowBox) {
+              // segmentRowBox is in DocAI's 1000×1000 page space — divide
+              // by 10 to get the % the overlay expects (missing this made
+              // the highlight ~8x the page width and the auto-scroll
+              // centered on it, scrolling the document out of view).
+              refs[i] = {
+                x1: rowBox.x1 / 10,
+                y1: rowBox.y1 / 10,
+                x2: rowBox.x2 / 10,
+                y2: rowBox.y2 / 10,
+              };
+              const cy = (loc.y1 + loc.y2) / 2;
+              if (seg) {
+                const row = findTableRow(seg, cy);
+                refTexts[i] = row !== null ? tableRowText(seg, row) : loc.matchedText;
+              } else {
+                refTexts[i] = loc.matchedText;
+              }
+              continue;
+            }
             const box = findTextBox(itemBoxes, loc.needle);
             const line = box ? expandToLine(lines, box) : null;
             if (line) {
@@ -286,17 +315,13 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
               // Text layer failed or produced no line (scanned PDF): expand
               // the citation to its full TABLE ROW via the segments geometry
               // so the highlight still covers the whole line.
-              const rowBox = loc.segmentId ? segmentRowBox(segments, loc) : null;
-              if (rowBox) {
-                // segmentRowBox is in DocAI's 1000×1000 page space — divide
-                // by 10 to get the % the overlay expects (missing this made
-                // the highlight ~8x the page width and the auto-scroll
-                // centered on it, scrolling the document out of view).
+              const fb = loc.segmentId ? segmentRowBox(segments, loc) : null;
+              if (fb) {
                 refs[i] = {
-                  x1: rowBox.x1 / 10,
-                  y1: rowBox.y1 / 10,
-                  x2: rowBox.x2 / 10,
-                  y2: rowBox.y2 / 10,
+                  x1: fb.x1 / 10,
+                  y1: fb.y1 / 10,
+                  x2: fb.x2 / 10,
+                  y2: fb.y2 / 10,
                 };
               } else if (box) refs[i] = box;
             }
@@ -592,7 +617,31 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
                   </p>
                 )}
                 {visiblePages.map(p => {
-                  const pageRows = rows.filter(r => r.page === p);
+                  // Dedupe overlay boxes: two citations resolving to the same
+                  // row (e.g. "agreed unit price" and "PO total" on one PO
+                  // line) produce identical boxes — rendering both would
+                  // stack the translucent fill into a darker double band.
+                  // The ACTIVE row always renders (it carries the pulse +
+                  // click affordance); among the rest, one box per page/box.
+                  // Same-page boxes that CONTAIN each other (one band
+                  // nested inside another resolution) also collapse to the
+                  // larger — a nested pair on the same row is one highlight.
+                  const seenBoxes = new Set<string>();
+                  const pageRows = rows.filter(r => r.page === p).filter(r => {
+                    if (r.key === activeRowKey) return true;
+                    const k = `${Math.round(r.box.x1 * 100)}|${Math.round(r.box.y1 * 100)}|${Math.round(r.box.x2 * 100)}|${Math.round(r.box.y2 * 100)}`;
+                    if (seenBoxes.has(k)) return false;
+                    for (const other of rows) {
+                      if (other.page !== p || other.key === r.key) continue;
+                      const o = other.box;
+                      if (
+                        o.x1 <= r.box.x1 && o.y1 <= r.box.y1 &&
+                        o.x2 >= r.box.x2 && o.y2 >= r.box.y2
+                      ) return false; // r is contained in an already-rendered box
+                    }
+                    seenBoxes.add(k);
+                    return true;
+                  });
                   return (
                     <div
                       key={p}

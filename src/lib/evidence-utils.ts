@@ -227,11 +227,94 @@ function cellBoxFor(cell: SegmentCell, seg: SegmentLike) {
 }
 
 /**
- * Full-row highlight for a table citation: union of every cell's box in the
- * row containing the citation's center (1000×1000 page space). This works
- * even for scanned PDFs where the rendered text layer is empty — the
- * segments API knows the table geometry. Returns null when the citation has
- * no segment or the segment has no cells.
+ * Full-height band per table row, derived ONLY from trusted geometry: cell
+ * row indices (DocAI detects rows), cell bbox Y (page-normalized ×1000 —
+ * consistent across parses, unlike pixel_bbox), and the segment's own
+ * coordinates. Each band starts at the midpoint between the previous row's
+ * text band and this row's, and ends at the midpoint to the next row's —
+ * so the highlight fills the row's visual area instead of just its text
+ * stroke. First row starts at the table top, last ends at the table bottom.
+ * Column geometry is intentionally NOT used (grid-estimate columns are
+ * guesses; a full-row box doesn't need them).
+ */
+export function tableRowBands(seg: SegmentLike): Map<number, { y1: number; y2: number }> {
+  const coords = seg.coordinates;
+  const cells = seg.cells ?? [];
+  const bands = new Map<number, { y1: number; y2: number }>();
+  if (!coords || cells.length === 0) return bands;
+
+  // Text-band Y extent per row (the anchor points for the midpoints).
+  const rowY = new Map<number, { min: number; max: number }>();
+  for (const cell of cells) {
+    const cb = cellBoxFor(cell, seg);
+    if (!cb) continue;
+    const e = rowY.get(cell.row);
+    if (e) {
+      e.min = Math.min(e.min, cb.y1);
+      e.max = Math.max(e.max, cb.y2);
+    } else {
+      rowY.set(cell.row, { min: cb.y1, max: cb.y2 });
+    }
+  }
+
+  const rows = [...rowY.keys()].sort((a, b) => a - b);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const e = rowY.get(r)!;
+    const prev = i > 0 ? rowY.get(rows[i - 1])! : null;
+    const next = i < rows.length - 1 ? rowY.get(rows[i + 1])! : null;
+    bands.set(r, {
+      y1: prev ? (prev.max + e.min) / 2 : coords.ymin,
+      y2: next ? (e.max + next.min) / 2 : coords.ymax,
+    });
+  }
+  return bands;
+}
+
+/** The row whose band contains the given Y (page space), or null. */
+export function findTableRow(seg: SegmentLike, cy: number): number | null {
+  for (const [row, band] of tableRowBands(seg)) {
+    if (cy >= band.y1 && cy <= band.y2) return row;
+  }
+  return null;
+}
+
+/**
+ * Full-row box for a table row: the union of the row's cell X extents
+ * (full table width) with the row's full-height band as Y. This is the
+ * box the evidence viewer draws for table citations.
+ */
+export function tableRowBandBox(seg: SegmentLike, row: number): { x1: number; y1: number; x2: number; y2: number } | null {
+  const band = tableRowBands(seg).get(row);
+  if (!band) return null;
+  let x1 = Infinity;
+  let x2 = -Infinity;
+  for (const cell of seg.cells ?? []) {
+    if (cell.row !== row) continue;
+    const cb = cellBoxFor(cell, seg);
+    if (!cb) continue;
+    x1 = Math.min(x1, cb.x1);
+    x2 = Math.max(x2, cb.x2);
+  }
+  if (x1 === Infinity) return null;
+  return { x1, y1: band.y1, x2, y2: band.y2 };
+}
+
+/** Human label for a table row: its cells' texts joined in order. */
+export function tableRowText(seg: SegmentLike, row: number): string {
+  return (seg.cells ?? [])
+    .filter(c => c.row === row)
+    .map(c => (c.text || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Full-row highlight for a table citation: the full-height band of the row
+ * containing the citation's center (1000×1000 page space). Works even for
+ * scanned PDFs where the rendered text layer is empty — the segments API
+ * knows the table geometry. Returns null when the citation has no segment,
+ * the segment has no cells, or no row band contains the center.
  */
 export function segmentRowBox(
   segments: SegmentLike[],
@@ -241,8 +324,14 @@ export function segmentRowBox(
   if (!seg) return null;
   const cells = seg.cells ?? [];
   if (cells.length === 0) return null;
-  const cx = (loc.x1 + loc.x2) / 2;
   const cy = (loc.y1 + loc.y2) / 2;
+  const row = findTableRow(seg, cy);
+  if (row !== null) {
+    const box = tableRowBandBox(seg, row);
+    if (box) return box;
+  }
+  // Legacy fallback: the row whose cell-union box contains the center.
+  const cx = (loc.x1 + loc.x2) / 2;
   const rows = new Map<number, { x1: number; y1: number; x2: number; y2: number }>();
   for (const cell of cells) {
     const cb = cellBoxFor(cell, seg);

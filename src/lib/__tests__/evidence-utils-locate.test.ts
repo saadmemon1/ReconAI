@@ -293,24 +293,25 @@ describe('locateCitations', () => {
 });
 
 describe('segmentRowBox (full-row highlight expansion)', () => {
-  test('unions every cell of the row containing the citation center', () => {
+  test('returns the full-height band of the row containing the citation center', () => {
     // The '470.00' price cell of row 1 (x 638-776, y 345-380) — the row box
-    // must span all six cells: x 85..914, y 345..380.
+    // must span all six cells: x 85..914, and the full row band from the
+    // row boundary up to the table bottom: y 345..470.
     const row = segmentRowBox(segments, {
       segmentId: 'p1_e0007',
       x1: 638, y1: 345, x2: 776, y2: 380,
     });
     expect(row).not.toBeNull();
-    expect(row).toEqual({ x1: 85, y1: 345, x2: 914, y2: 380 });
+    expect(row).toEqual({ x1: 85, y1: 345, x2: 914, y2: 470 });
   });
 
-  test('resolves to the header row when the center is in it', () => {
+  test('resolves to the header row when the center is in it (band starts at the table top)', () => {
     const row = segmentRowBox(segments, {
       segmentId: 'p1_e0007',
       x1: 638, y1: 317, x2: 776, y2: 345,
     });
     expect(row).not.toBeNull();
-    expect(row).toEqual({ x1: 85, y1: 317, x2: 914, y2: 345 });
+    expect(row).toEqual({ x1: 85, y1: 240, x2: 914, y2: 345 });
   });
 
   test('single-cell row returns that cell box', () => {
