@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { decryptDocAISession, COOKIE_NAME } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
+import { fetchSegmentsWithRetry } from '@/lib/fetch-segments';
 import { reconcile, ReconciliationDocument } from '@/engine/reconcile';
 import { isDocAIUuid } from '@/lib/proxy-path-validation';
 
@@ -33,50 +34,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Fetch segments for all selected files
-    const documents: ReconciliationDocument[] = [];
-    
-    for (const fileId of fileIds) {
-      const fileRes = await docaiFetch(`/v1/files/${fileId}`, {
-        docaiSessionToken: session.token,
-        docaiOrgId: session.orgId,
-      });
-      // F5: fail loudly if DocAI rejects the file (cross-org or missing) —
-      // no more silently reconciling an empty/foreign document
-      if (!fileRes.ok) {
-        throw new Error(`File ${fileId} not accessible (HTTP ${fileRes.status})`);
-      }
-      const fileData = await fileRes.json();
-      let fileName = fileData.filename || fileData.name || 'Unknown';
-      
-      const segRes = await docaiFetch(`/v1/files/${fileId}/segments`, {
-        docaiSessionToken: session.token,
-        docaiOrgId: session.orgId,
-      });
-      const segData = await segRes.json();
-      let segments = segData.segments || segData.items || [];
-      // Ensure segments is an array — API returns flat array directly
-      if (!Array.isArray(segments)) {
-        segments = Array.isArray(segData) ? segData : [];
-      }
-      // If the first fallback gave empty array but segData IS the array, use it
-      if (segments.length === 0 && Array.isArray(segData)) {
-        segments = segData;
-      }
-      // Get fileName from segments if file metadata doesn't have it
-      if (fileName === 'Unknown' && segments.length > 0) {
-        fileName = segments[0]?.docName || fileName;
-      }
-      // Normalize API response: map markdown→content, title→type, assign numeric index
-      segments = segments.map((s: { markdown?: string; content?: string; title?: string; type?: string }, i: number) => ({
-        index: i,
-        content: s.markdown || s.content || '',
-        type: s.title || s.type,
-      }));
-      
-      documents.push({ fileId, segments, fileName });
-    }
-
     // Determine LLM provider and endpoint
     // modelId format: "lmstudio/qwen/qwen3-vl-30b" or "deepseek/deepseek-v4-flash"
     const slashIdx = modelId.indexOf('/');
@@ -103,6 +60,56 @@ export async function POST(req: NextRequest) {
         const send = (obj: unknown) => {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
         };
+
+        // Fetch metadata + segments for all selected files, INSIDE the stream
+        // so parse waits are visible in the plan ("Fetch document segments"
+        // lights up) and empty-parse failures arrive as an SSE error naming
+        // the file — instead of silently building an empty prompt that the
+        // LLM answers with an all-zeros report.
+        const documents: ReconciliationDocument[] = [];
+        try {
+          for (const fileId of fileIds) {
+            const fileRes = await docaiFetch(`/v1/files/${fileId}`, {
+              docaiSessionToken: session.token,
+              docaiOrgId: session.orgId,
+            });
+            // F5: fail loudly if DocAI rejects the file (cross-org or missing) —
+            // no more silently reconciling an empty/foreign document
+            if (!fileRes.ok) {
+              throw new Error(`File ${fileId} not accessible (HTTP ${fileRes.status})`);
+            }
+            const fileData = await fileRes.json();
+            let fileName = fileData.filename || fileData.name || 'Unknown';
+
+            send({ type: 'stage', stage: 'retrieval-2' });
+            const rawSegments = await fetchSegmentsWithRetry(fileId, fileName, {
+              fetchFn: docaiFetch,
+              docaiSessionToken: session.token,
+              docaiOrgId: session.orgId,
+            });
+
+            // Get fileName from segments if file metadata doesn't have it
+            if (fileName === 'Unknown' && rawSegments.length > 0) {
+              fileName = (rawSegments[0] as { docName?: string })?.docName || fileName;
+            }
+            // Normalize API response: map markdown→content, title→type, assign numeric index
+            const segments = rawSegments.map((s, i) => ({
+              index: i,
+              content: s.markdown || s.content || '',
+              type: s.title || s.type,
+            }));
+
+            documents.push({ fileId, segments, fileName });
+          }
+        } catch (error: unknown) {
+          console.error('Segment fetch error:', error);
+          send({
+            type: 'error',
+            message: error instanceof Error ? error.message : 'Failed to fetch document segments',
+          });
+          controller.close();
+          return;
+        }
 
         const llmCall = async (prompt: string) => {
           const llmRes = await fetch(llmUrl, {

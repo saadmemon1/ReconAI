@@ -85,6 +85,10 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
   const [rejectedCount, setRejectedCount] = useState(0);
 
   const [parsedIds, setParsedIds] = useState<Set<string>>(new Set());
+  // Files whose parse job COMPLETED but whose segments never materialized —
+  // shown as "No parsed content" and excluded from reconcile (the platform
+  // can mark jobs complete while extraction silently produced nothing).
+  const [emptySegments, setEmptySegments] = useState<Set<string>>(new Set());
 
   const markParsed = (fileIds: string[]) => {
     setParsedIds(prev => {
@@ -92,6 +96,33 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
       fileIds.forEach(id => next.add(id));
       return next;
     });
+  };
+
+  // A completed parse job is only trustworthy once its segments are actually
+  // readable — extraction can lag the job record by a few seconds. Verify
+  // with brief retries; a file whose segments never arrive stays "not
+  // parsed" instead of silently producing an all-zeros reconcile.
+  const verifyParsedSegments = async (fileId: string): Promise<boolean> => {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const res = await fetchDocAI(`/files/${fileId}/segments`);
+        if (res.ok) {
+          const data = await res.json();
+          const payload = data as { segments?: unknown; items?: unknown } | null;
+          const segs = Array.isArray(data) ? data : payload?.segments ?? payload?.items;
+          if (
+            Array.isArray(segs) &&
+            segs.some((s: { markdown?: string; content?: string }) => ((s.markdown || s.content) ?? '').trim().length > 0)
+          ) {
+            return true;
+          }
+        }
+      } catch {
+        // transient — retry below
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    return false;
   };
 
   const loadFiles = async () => {
@@ -346,7 +377,20 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
             return next;
           });
           if (status === 'completed') {
-            markParsed([fileId]);
+            // Verify the parse actually produced readable segments before
+            // blessing the file as "parsed" — the platform can mark jobs
+            // complete while extraction produced nothing.
+            const hasContent = await verifyParsedSegments(fileId);
+            if (hasContent) {
+              markParsed([fileId]);
+              setEmptySegments(prev => {
+                const next = new Set(prev);
+                next.delete(fileId);
+                return next;
+              });
+            } else {
+              setEmptySegments(prev => new Set(prev).add(fileId));
+            }
             window.dispatchEvent(new Event('credits-refresh'));
           }
           loadFilesRef.current();
@@ -593,6 +637,13 @@ export function FileManager({ kbId, onWorkspacesChanged, onSwitchWorkspace, onRe
                       ) : isParsed ? (
                         <span className="inline-flex items-center rounded-full bg-success/10 px-2 py-0.5 text-xs font-medium text-success">
                           Parsed
+                        </span>
+                      ) : emptySegments.has(f.id) ? (
+                        <span
+                          title="Parse finished but no text was extracted. Re-parse the file, or delete it and re-upload."
+                          className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning"
+                        >
+                          No parsed content
                         </span>
                       ) : (
                         <span className="text-xs text-secondary">Not parsed</span>
