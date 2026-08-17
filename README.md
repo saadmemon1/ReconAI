@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="screenshots/reconai-logo.svg" alt="ReconAI logo" width="320">
+</p>
+
 # ReconAI
 
 Document-reconciliation web app: upload procurement documents (purchase orders, receipts, invoices), have them parsed by **Providus's Document Intelligence Layer (DocAI)**, cross-checked by an LLM, and review the results in a findings report with per-file evidence you can click through to the exact line in the source PDF — then send the supplier a follow-up email drafted from the findings.
@@ -11,14 +15,53 @@ Upload PO / Receipt / Invoice
 
 ## Features
 
-- **Upload & parse** — PDFs (and images) upload through the app's BFF to Providus DocAI and parse in the background with live progress; parse state is server-authoritative.
-- **Files tab** — dense, Drive/Linear-style document table: type icons, date added, status chips (parsed / parsing / not parsed), sortable columns, filename search, per-row + bulk delete with in-app confirmation, row-click opens a resizable PDF preview.
-- **Reconciliation** — one click runs a multi-way match across a workspace's documents through a reasoning LLM (DeepSeek cloud or a local server), with a live "thinking" stream and stage-by-stage progress while it works. Discrepancies are flagged across **eight finding categories**: overbilling, quantity mismatch, price mismatch, missing items, extra items, unsupported charges, evidence gaps, and calculation errors.
-- **Findings report** — severity-ranked findings (critical / high / medium / low) with search and column visibility, KPI cards (total billed, total overbilled, recommended payable), and a summary whose money figures are derived from the structured KPI data by the engine — the LLM writes narrative only, never arithmetic.
-- **Evidence system** — each finding opens an orbital mindmap of its cited files; select up to three to view the source PDFs side by side with **line-level highlights** (the whole table row or text line, not just the matched cell), each citation carrying its own brief reason. Click a citation to jump and pulse.
-- **Supplier follow-up emails** — when a reconciliation finds discrepancies, the LLM writes one follow-up email per supplier (in the same response as the report — no second call, no drift); the Report tab shows the drafts read-only with Copy and Open-in-mail-app.
-- **Workspaces** — knowledge bases as isolated workspaces; reports persist per workspace in the browser (localStorage).
-- **Auth** — email/password signup and sign-in against Providus DocAI, wrapped in encrypted session cookies.
+### Upload & parse
+
+PDFs (and images) upload through the app's BFF to Providus DocAI and parse in the background with live progress. Parse state is server-authoritative: a file counts as parsed only when DocAI's parse job actually completed, never from client-side guesswork.
+
+### Files tab
+
+A dense, Drive/Linear-style document table: type icons, date added, status chips (parsed / parsing / not parsed), sortable columns, filename search, per-row + bulk delete with in-app confirmation, and a resizable PDF preview on row click.
+
+<p align="center">
+  <img src="screenshots/files-tab.png" alt="Files tab: document table with parse status chips" width="720">
+</p>
+
+### Reconciliation
+
+One click runs a multi-way match across a workspace's documents through a reasoning LLM (DeepSeek cloud or a local server), with a live "thinking" stream and stage-by-stage progress while it works. Discrepancies are flagged across **eight finding categories**: overbilling, quantity mismatch, price mismatch, missing items, extra items, unsupported charges, evidence gaps, and calculation errors.
+
+### Findings report
+
+Severity-ranked findings (critical / high / medium / low) with search and column visibility. KPI cards show total billed, total overbilled, and recommended payable — a summary whose money figures are derived from the structured KPI data by the engine. The LLM writes narrative only, never arithmetic.
+
+<p align="center">
+  <img src="screenshots/report.png" alt="Report: KPI cards and severity-ranked findings" width="720">
+</p>
+
+### Evidence system
+
+Each finding opens an orbital mindmap of its cited files; select up to three to view the source PDFs side by side with **line-level highlights** (the whole table row or text line, not just the matched cell), each citation carrying its own brief reason. Click a citation to jump and pulse.
+
+<p align="center">
+  <img src="screenshots/evidence-orbital.png" alt="Evidence orbital: cited files around the finding with line-level highlights" width="720">
+</p>
+
+### Supplier follow-up emails
+
+When a reconciliation finds discrepancies, the LLM writes one follow-up email per supplier (in the same response as the report — no second call, no drift). The Report tab shows the drafts read-only with Copy and Open-in-mail-app.
+
+<p align="center">
+  <img src="screenshots/supplier-email.png" alt="Supplier follow-up email draft with Copy and Open-in-mail-app" width="720">
+</p>
+
+### Workspaces
+
+Knowledge bases as isolated workspaces; reports persist per workspace in the browser (localStorage).
+
+### Auth
+
+Email/password signup and sign-in against Providus DocAI, wrapped in encrypted session cookies.
 
 ## Architecture
 
