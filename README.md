@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshots/reconai-logo.svg" alt="ReconAI logo" width="320">
+  <img src="screenshots/reconai-logo.svg" alt="ReconAI logo" width="100%">
 </p>
 
 # ReconAI
