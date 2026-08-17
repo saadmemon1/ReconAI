@@ -1,13 +1,42 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="320" height="96" viewBox="0 0 320 96" role="img" aria-label="ReconAI logo">
-  <!-- placeholder logo: swap this file for the official ReconAI logo when available -->
-  <rect x="8" y="16" width="64" height="64" rx="14" fill="#10343D"/>
-  <!-- document -->
-  <rect x="24" y="28" width="32" height="40" rx="4" fill="#FFFFFF"/>
-  <rect x="29" y="36" width="22" height="3.5" rx="1.75" fill="#D8DEE4"/>
-  <rect x="29" y="43" width="22" height="3.5" rx="1.75" fill="#D8DEE4"/>
-  <rect x="29" y="50" width="14" height="3.5" rx="1.75" fill="#D8DEE4"/>
-  <!-- amber check -->
-  <path d="M48 44 l5 5 l9 -11" stroke="#E89B3C" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="96" viewBox="0 0 360 96" role="img" aria-label="ReconAI logo">
+  <!-- ReconAI logo: dot-grid mark matching the auth page ThreeDotGrid backdrop (slate #334155, shader opacities) -->
+  <rect x="8" y="16" width="64" height="64" rx="14" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+  <circle cx="13.3" cy="21.3" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="24.0" cy="21.3" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="34.7" cy="21.3" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="45.3" cy="21.3" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="56.0" cy="21.3" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="66.7" cy="21.3" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="13.3" cy="32.0" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="24.0" cy="32.0" r="2.1" fill="#334155" fill-opacity="0.8" />
+  <circle cx="34.7" cy="32.0" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="45.3" cy="32.0" r="2.1" fill="#334155" fill-opacity="1.0" />
+  <circle cx="56.0" cy="32.0" r="2.1" fill="#334155" fill-opacity="0.8" />
+  <circle cx="66.7" cy="32.0" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="13.3" cy="42.7" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="24.0" cy="42.7" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="34.7" cy="42.7" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="45.3" cy="42.7" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="56.0" cy="42.7" r="2.1" fill="#334155" fill-opacity="0.8" />
+  <circle cx="66.7" cy="42.7" r="3.0" fill="#334155" fill-opacity="1.0" />
+  <circle cx="13.3" cy="53.3" r="2.1" fill="#334155" fill-opacity="1.0" />
+  <circle cx="24.0" cy="53.3" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="34.7" cy="53.3" r="2.1" fill="#334155" fill-opacity="0.8" />
+  <circle cx="45.3" cy="53.3" r="3.0" fill="#334155" fill-opacity="1.0" />
+  <circle cx="56.0" cy="53.3" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="66.7" cy="53.3" r="2.1" fill="#334155" fill-opacity="0.8" />
+  <circle cx="13.3" cy="64.0" r="2.1" fill="#334155" fill-opacity="0.8" />
+  <circle cx="24.0" cy="64.0" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="34.7" cy="64.0" r="2.1" fill="#334155" fill-opacity="0.8" />
+  <circle cx="45.3" cy="64.0" r="2.1" fill="#334155" fill-opacity="1.0" />
+  <circle cx="56.0" cy="64.0" r="3.0" fill="#334155" fill-opacity="1.0" />
+  <circle cx="66.7" cy="64.0" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="13.3" cy="74.7" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="24.0" cy="74.7" r="2.1" fill="#334155" fill-opacity="0.3" />
+  <circle cx="34.7" cy="74.7" r="2.1" fill="#334155" fill-opacity="0.8" />
+  <circle cx="45.3" cy="74.7" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="56.0" cy="74.7" r="2.1" fill="#334155" fill-opacity="0.5" />
+  <circle cx="66.7" cy="74.7" r="2.1" fill="#334155" fill-opacity="0.3" />
   <!-- wordmark -->
-  <text x="92" y="62" font-family="Inter, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="44" font-weight="700" letter-spacing="-1" fill="#10343D">Recon<tspan fill="#E89B3C">AI</tspan></text>
+  <text x="92" y="62" font-family="Inter, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif" font-size="42" font-weight="700" letter-spacing="-1" fill="#334155">Recon<tspan fill="#0F172A">AI</tspan></text>
 </svg>

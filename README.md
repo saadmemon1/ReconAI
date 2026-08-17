@@ -242,5 +242,5 @@ Why not per-workspace: parse state belongs to the file (file IDs are globally un
 
 ReconAI was mentored, directed, and reviewed by the Providus team, who also provided access to the Document Intelligence layer (DocAI) that powers it:
 
-- **Sami Haroon (@samihk)** (VP of Engineering) — mentorship and product direction
-- **Mujtaba Kamal (@mujtabakamal1230)** (Senior Software Engineer) — engineering review and guidance throughout
+- **Sami Haroon** ([@samihk](https://github.com/samihk)) (VP of Engineering) — mentorship and product direction
+- **Mujtaba Kamal** ([@mujtabakamal1230](https://github.com/mujtabakamal1230)) (Senior Software Engineer) — engineering review and guidance throughout
