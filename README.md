@@ -4,16 +4,16 @@ Document-reconciliation web app: upload procurement documents (purchase orders, 
 
 ```
 Upload PO / Receipt / Invoice
-   → DocAI parses (text + tables + geometry)
-   → LLM reconciles (one call: report + findings + email drafts)
-   → Report tab: KPIs, findings, evidence viewer, supplier emails
+   -> DocAI parses (text + tables + geometry)
+   -> LLM reconciles (one call: report + findings + email drafts)
+   -> Report tab: KPIs, findings, evidence viewer, supplier emails
 ```
 
 ## Features
 
 - **Upload & parse** — PDFs (and images) upload through the app's BFF to Providus DocAI and parse in the background with live progress; parse state is server-authoritative.
 - **Files tab** — dense, Drive/Linear-style document table: type icons, date added, status chips (parsed / parsing / not parsed), sortable columns, filename search, per-row + bulk delete with in-app confirmation, row-click opens a resizable PDF preview.
-- **Reconciliation** — one click runs a multi-way match across a workspace's documents through a reasoning LLM (DeepSeek cloud or a local server), with a live "thinking" stream and stage-by-stage progress while it works.
+- **Reconciliation** — one click runs a multi-way match across a workspace's documents through a reasoning LLM (DeepSeek cloud or a local server), with a live "thinking" stream and stage-by-stage progress while it works. Discrepancies are flagged across **eight finding categories**: overbilling, quantity mismatch, price mismatch, missing items, extra items, unsupported charges, evidence gaps, and calculation errors.
 - **Findings report** — severity-ranked findings (critical / high / medium / low) with search and column visibility, KPI cards (total billed, total overbilled, recommended payable), and a summary whose money figures are derived from the structured KPI data by the engine — the LLM writes narrative only, never arithmetic.
 - **Evidence system** — each finding opens an orbital mindmap of its cited files; select up to three to view the source PDFs side by side with **line-level highlights** (the whole table row or text line, not just the matched cell), each citation carrying its own brief reason. Click a citation to jump and pulse.
 - **Supplier follow-up emails** — when a reconciliation finds discrepancies, the LLM writes one follow-up email per supplier (in the same response as the report — no second call, no drift); the Report tab shows the drafts read-only with Copy and Open-in-mail-app.
@@ -25,19 +25,19 @@ Upload PO / Receipt / Invoice
 The system is one pipeline: documents in, decisions out.
 
 ```
-┌──────────────┐   ┌────────────────┐   ┌──────────────────────┐   ┌──────────────┐
-│  1 · UPLOAD  │──▶│  2 · PARSE     │──▶│  3 · RECONCILE       │──▶│  4 · REVIEW  │
-│  Files tab   │   │  Providus      │   │  Engine + LLM        │   │  Report tab  │
-│  PDFs/images │   │  DocAI         │   │  one call: report +  │   │  findings ·  │
-│  → workspace │   │  → segments    │   │  findings + email    │   │  evidence ·  │
-│              │   │    (text,      │   │  drafts              │   │  emails      │
-│              │   │    geometry)   │   │                      │   │              │
-└──────────────┘   └────────────────┘   └──────────────────────┘   └──────────────┘
-        │                   │                      │                        │
-        │ BFF proxy         │ segments feed        │ sanitized report       │
-        │ (API routes,      │ BOTH the prompt      │ (engine-derived        │
-        │ auth + path       │ and the evidence     │ figures)               │
-        │ allowlist)        │ viewer               │                        │
++--------------+   +----------------+   +----------------------+   +--------------+
+|  1 . UPLOAD  |-->|  2 . PARSE     |-->|  3 . RECONCILE       |-->|  4 . REVIEW  |
+|  Files tab   |   |  Providus      |   |  Engine + LLM        |   |  Report tab  |
+|  PDFs/images |   |  DocAI         |   |  one call: report +  |   |  findings .  |
+|  -> workspace|   |  -> segments   |   |  findings + email    |   |  evidence .  |
+|              |   |    (text,      |   |  drafts              |   |  emails      |
+|              |   |    geometry)   |   |                      |   |              |
++--------------+   +----------------+   +----------------------+   +--------------+
+        |                   |                      |                        |
+        | BFF proxy         | segments feed        | sanitized report       |
+        | (API routes,      | BOTH the prompt      | (engine-derived        |
+        | auth + path       | and the evidence     | figures)               |
+        | allowlist)        | viewer               |                        |
 ```
 
 Three one-line flows complete the picture:
@@ -59,6 +59,10 @@ Three one-line flows complete the picture:
 | **Tests** | `src/lib/__tests__/`, `src/engine/__tests__/` | 160 `bun:test` cases — engine, citation location, line grouping, KPI derivation, prompt-injection hardening, email verification. |
 
 ## How we use Providus's Document Intelligence Layer (DocAI)
+
+ReconAI is built on top of **Providus's Document Intelligence layer (DocAI)** — the app relays all document/file/parse calls to it through the BFF. Interested in using DocAI for your own documents (parsing, extraction, classification, redaction)? Contact the Providus team at **hello@providus.ai** or **sami@providus.ai**.
+
+DocAI is a hosted service: parsing and file operations consume DocAI credits provisioned by Providus, so running the app end to end requires a Providus account with DocAI credits. Reach out at **hello@providus.ai** to get set up.
 
 The app never talks to DocAI directly. Every document capability goes through the BFF, which authenticates, validates, and relays:
 
@@ -154,48 +158,46 @@ bun test         # test suite (bun:test)
 
 ```
 src/
-├── app/
-│   ├── api/
-│   │   ├── auth/            signup · signin · signout · session
-│   │   ├── docai/[...path]/ whitelisted BFF relay to Providus DocAI
-│   │   └── reconcile/       SSE LLM stream → report
-│   └── page.tsx             dashboard shell
-├── components/
-│   ├── dashboard.tsx        tab shell (Files / Report)
-│   ├── file-manager.tsx     Files tab: upload, dense table, preview, delete
-│   ├── reconcile-runner.tsx model picker, SSE thinking stream, stages
-│   ├── report-viewer.tsx    KPIs, summary, findings, supplier emails
-│   └── ui/                  evidence-pdf-viewer, evidence-mindmap, primitives
-├── engine/
-│   └── reconcile.ts         pure reconciliation engine (prompt, parse, sanitize, derive)
-└── lib/
-    ├── docai-proxy.ts       upstream fetch helper (session cookie + org header)
-    ├── evidence-utils.ts    citation locating, attribution, reasons, segmentRowBox
-    ├── pdf-lines.ts         text-layer line grouping for line-level highlights
-    ├── kpi-utils.ts         KPI sanitization + payable derivation
-    ├── file-table.ts        sort/search helpers for the Files table
-    ├── session.ts           encrypted JWT session cookies
-    ├── proxy-path-validation.ts  BFF path allowlist
-    └── __tests__/           bun:test suites
+|-- app/
+|   |-- api/
+|   |   |-- auth/            signup . signin . signout . session
+|   |   |-- docai/[...path]/ whitelisted BFF relay to Providus DocAI
+|   |   `-- reconcile/       SSE LLM stream -> report
+|   `-- page.tsx             dashboard shell
+|-- components/
+|   |-- dashboard.tsx        tab shell (Files / Report)
+|   |-- file-manager.tsx     Files tab: upload, dense table, preview, delete
+|   |-- reconcile-runner.tsx model picker, SSE thinking stream, stages
+|   |-- report-viewer.tsx    KPIs, summary, findings, supplier emails
+|   `-- ui/                  evidence-pdf-viewer, evidence-mindmap, primitives
+|-- engine/
+|   `-- reconcile.ts         pure reconciliation engine (prompt, parse, sanitize, derive)
+`-- lib/
+    |-- docai-proxy.ts       upstream fetch helper (session cookie + org header)
+    |-- evidence-utils.ts    citation locating, attribution, reasons, segmentRowBox
+    |-- pdf-lines.ts         text-layer line grouping for line-level highlights
+    |-- kpi-utils.ts         KPI sanitization + payable derivation
+    |-- file-table.ts        sort/search helpers for the Files table
+    |-- session.ts           encrypted JWT session cookies
+    |-- proxy-path-validation.ts  BFF path allowlist
+    `-- __tests__/           bun:test suites
 ```
 
 ## Local Storage Notes
 
 ### Reconciliation reports — per-workspace
 
-Reports are stored per-workspace under `reconai-last-report-<kbId>` so switching
-workspaces shows that workspace's report. A legacy global key
-(`reconai-last-report`) is migrated once on first run after upgrade, then removed.
+Reports are stored per-workspace under `reconai-last-report-<kbId>` so switching workspaces shows that workspace's report. A legacy global key (`reconai-last-report`) is migrated once on first run after upgrade, then removed.
 
 ### Parsed-files tracking — server-side (no localStorage)
 
-Parse status is NOT stored in localStorage. The file list is fetched with
-`GET /files?kb_id=...&include=processing`, and a file counts as parsed when
-`processing.latest_parse_job.status === 'completed'` (helper:
-`src/lib/file-status.ts` → `isFileParsed()`). The old `reconai-parsed-files`
-localStorage Set was removed — server status is authoritative, works across
-browsers/devices, and never goes stale (deleted files simply disappear).
+Parse status is NOT stored in localStorage. The file list is fetched with `GET /files?kb_id=...&include=processing`, and a file counts as parsed when `processing.latest_parse_job.status === 'completed'` (helper: `src/lib/file-status.ts` → `isFileParsed()`). The old `reconai-parsed-files` localStorage Set was removed — server status is authoritative, works across browsers/devices, and never goes stale (deleted files simply disappear).
 
-Why not per-workspace: parse state belongs to the file (file IDs are globally
-unique UUIDs owned by exactly one workspace), so a per-workspace key would
-store identical information twice.
+Why not per-workspace: parse state belongs to the file (file IDs are globally unique UUIDs owned by exactly one workspace), so a per-workspace key would store identical information twice.
+
+## Acknowledgements
+
+ReconAI was mentored, directed, and reviewed by the Providus team, who also provided access to the Document Intelligence layer (DocAI) that powers it:
+
+- **Sami Haroon (@samihk)** (VP of Engineering) — mentorship and product direction
+- **Mujtaba Kamal (@mujtabakamal1230)** (Senior Software Engineer) — engineering review and guidance throughout
