@@ -22,9 +22,10 @@
   ReconAI is an AI-powered document reconciliation web app: upload procurement documents (purchase orders, receipts, invoices), have them parsed by <strong>Providus's Document Intelligence Layer (DocAI)</strong>, cross-checked by an LLM, and review the results in a findings report with per-file evidence you can click through to the exact line in the source PDF, then send the supplier a follow-up email drafted from the findings.
 </p>
 
-<p align="center">
-  <video src="screenshots/demo.mp4" autoplay muted loop playsinline controls width="100%"></video>
-</p>
+
+<video src="https://github.com/user-attachments/assets/0d5724bd-fab5-41d3-b0fe-79defb4847af" autoplay muted loop playsinline controls width="100%"></video>
+
+
 
 <!-- Case study link placeholder: attach the Providus blog link once published
 <p align="center"><a href="#">Read the case study on the Providus website</a></p>
