@@ -2,9 +2,53 @@
   <img src="screenshots/reconai-logo.svg" alt="ReconAI logo" width="100%">
 </p>
 
-# ReconAI
+<p align="center">
+  <strong>AI-Powered Document Reconciliation</strong>
+</p>
 
-Document-reconciliation web app: upload procurement documents (purchase orders, receipts, invoices), have them parsed by **Providus's Document Intelligence Layer (DocAI)**, cross-checked by an LLM, and review the results in a findings report with per-file evidence you can click through to the exact line in the source PDF — then send the supplier a follow-up email drafted from the findings.
+<p align="center">
+  <img src="https://img.shields.io/badge/License-Apache--2.0-10343D" alt="License: Apache-2.0">
+  <img src="https://img.shields.io/badge/Open%20Source-Yes-0A7F3F" alt="Open Source">
+  <img src="https://img.shields.io/badge/Powered%20by-Providus%20DocAI-E89B3C" alt="Powered by Providus DocAI">
+</p>
+
+<p align="center">
+  Open Source • Document Intelligence • Enterprise-Ready
+</p>
+
+<p align="center">
+  ReconAI is an AI-powered document reconciliation web app: upload procurement documents (purchase orders, receipts, invoices), have them parsed by <strong>Providus's Document Intelligence Layer (DocAI)</strong>, cross-checked by an LLM, and review the results in a findings report with per-file evidence you can click through to the exact line in the source PDF, then send the supplier a follow-up email drafted from the findings.
+</p>
+
+<!-- Demo GIF placeholder: drop a short demo capture here once ready
+<p align="center">
+  <img src="screenshots/demo.gif" alt="ReconAI demo" width="640">
+</p>
+-->
+
+<!-- Case study link placeholder: attach the Providus blog link once published
+<p align="center"><a href="#">Read the case study on the Providus website</a></p>
+-->
+
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Features](#features)
+- [Architecture](#architecture)
+- [How we use Providus's Document Intelligence Layer (DocAI)](#how-we-use-providuss-document-intelligence-layer-docai)
+- [Reconciliation pipeline](#reconciliation-pipeline)
+- [Evidence system](#evidence-system)
+- [Security model](#security-model)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Scripts](#scripts)
+- [Project structure](#project-structure)
+- [Local Storage Notes](#local-storage-notes)
+- [Acknowledgements](#acknowledgements)
+
+## Introduction
+
+Procurement reconciliation still runs on spreadsheets and human eyes: a person opens a purchase order, a goods receipt, and an invoice side by side, and manually checks prices, quantities, totals, and math. ReconAI replaces that with one streaming pass.
 
 ```
 Upload PO / Receipt / Invoice
