@@ -21,7 +21,9 @@
 </p>
 
 <p align="center">
-  <img src="screenshots/demo.gif" alt="ReconAI demo: reconcile in progress, report with findings" width="640">
+  <video autoplay muted loop playsinline controls width="100%">
+    <source src="screenshots/demo.mp4" type="video/mp4">
+  </video>
 </p>
 
 <!-- Case study link placeholder: attach the Providus blog link once published
