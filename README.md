@@ -23,9 +23,7 @@
 </p>
 
 <p align="center">
-  <video autoplay muted loop playsinline controls width="100%">
-    <source src="screenshots/demo.mp4" type="video/mp4">
-  </video>
+  <video src="screenshots/demo.mp4" autoplay muted loop playsinline controls width="100%"></video>
 </p>
 
 <!-- Case study link placeholder: attach the Providus blog link once published
