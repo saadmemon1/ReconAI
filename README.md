@@ -104,9 +104,9 @@ When a reconciliation finds discrepancies, the LLM writes one follow-up email pe
 
 Knowledge bases as isolated workspaces; reports persist per workspace in the browser (localStorage).
 
-### Auth
+### Bring your own key
 
-Email/password signup and sign-in against Providus DocAI, wrapped in encrypted session cookies.
+No accounts, no signup. Paste a DocAI API key from [platform.providus.ai](https://platform.providus.ai) and the app is yours. The key is sealed into an encrypted, HttpOnly cookie and never returned to the browser. Whatever the key is scoped to — full access, or an RBAC role with specific permissions and resource grants — is exactly what ReconAI can do.
 
 ## Architecture
 
@@ -140,7 +140,7 @@ Three one-line flows complete the picture:
 |---|---|---|
 | **Frontend** | `src/components/dashboard.tsx`, `file-manager.tsx`, `reconcile-runner.tsx`, `report-viewer.tsx` | All screens. No API keys, no direct upstream calls — everything through the BFF. |
 | **Evidence viewer** | `src/components/ui/evidence-pdf-viewer.tsx`, `evidence-mindmap.tsx` | Renders cited PDFs in-browser (pdfjs-dist), locates citations in the PDF text layer, draws line-level highlights, orbits cited files. |
-| **BFF** | `src/app/api/docai/[...path]/route.ts` | Authenticates the session, validates the requested path against an allowlist, forwards to `{DOCAI_BASE_URL}/v1/...` with the DocAI session cookie + `x-docai-org-id` header. |
+| **BFF** | `src/app/api/docai/[...path]/route.ts` | Authenticates the request, validates the requested path against an allowlist, forwards to `{DOCAI_BASE_URL}/v1/...` with the user's DocAI API key as `x-api-key`. |
 | **Reconcile API** | `src/app/api/reconcile/route.ts` | SSE stream: calls the LLM provider, forwards reasoning deltas live, returns the sanitized report. |
 | **Reconcile engine** | `src/engine/reconcile.ts` | Pure, portable, unit-tested: builds the prompt, calls the LLM, parses + sanitizes the JSON report, derives every figure in code. |
 | **Libraries** | `src/lib/evidence-utils.ts`, `pdf-lines.ts`, `kpi-utils.ts`, `file-table.ts`, `session.ts`, `docai-proxy.ts`, `proxy-path-validation.ts`, `format-inline.ts`, `file-status.ts` | Pure logic: citation locating, line grouping, KPI math, file sorting, encrypted sessions, proxying, path allowlists. |
@@ -155,20 +155,22 @@ DocAI is a hosted service: parsing and file operations consume DocAI credits pro
 The app never talks to DocAI directly. Every document capability goes through the BFF, which authenticates, validates, and relays:
 
 **Auth & workspaces**
-- Sign-up / sign-in hit Providus's auth (better-auth session tokens). The returned `session_token` + org id are wrapped in our own encrypted JWT cookie (`reconai-session`, HS256, 24h, HttpOnly) via `jose`. DocAI requests carry `better-auth.session_token` as a cookie and `x-docai-org-id` for org-scoped access (per the control-plane OpenAPI security requirements).
+- ReconAI has no accounts of its own. The user pastes a **DocAI API key** — minted by an org admin at [platform.providus.ai](https://platform.providus.ai), either full-access or RBAC-scoped. `POST /api/auth/key` validates it with a `GET /v1/knowledge-bases` probe, then seals it into an encrypted JWT cookie (`reconai-session`, HS256, 30 days, HttpOnly) via `jose`. Every relayed request carries it as `x-api-key`; the key is org-scoped by itself, so no org header is sent.
+- Because the key *is* the principal, DocAI enforces whatever roles and resource grants its admin attached to it. Key expiry is configured per key in the platform and is not exposed by the API, so an expired or revoked key simply returns 401 and the user pastes a new one.
 - Workspaces map to DocAI knowledge bases (`kb_id`); files belong to exactly one KB.
 
 **Files & parsing**
 - `GET /files?kb_id=...&include=processing` — the authoritative file list, including parse state. A file counts as parsed when `processing.latest_parse_job.status === 'completed'` (`src/lib/file-status.ts`). No client-side staleness; deleted files simply disappear.
 - Uploads (multipart) and deletes relay through the proxy. Parse is triggered server-side; the UI polls status.
+- Single-file reads (`GET /files/{id}`, with or without `?include=processing`) wrap the record in a `{ file: ... }` envelope, unlike the list endpoint's flat objects. `unwrapFile` (`src/lib/docai-shapes.ts`) normalizes both shapes so callers stay shape-agnostic.
 
 **Segments — the structured document representation**
-- `GET /files/{id}/segments` returns the document as segments: each segment carries `markdown` text plus `coordinates` in a normalized **1000×1000 page space**, and table segments carry `cells` (text, `bbox`, row/col, and a `cellsSource` flag). For `grid-estimate` segments the engine re-estimates column boundaries from text lengths because DocAI's equal-width grid misplaces uneven columns.
+- `GET /files/{id}/segments` returns the document as segments: each segment carries `markdown` text plus `coordinates` in a normalized **1000×1000 page space**, and table segments carry `cells` (text, `bbox`, row/col, and a `cellsSource` flag — `projection`, `grid-estimate`, or `table-former`). For `grid-estimate` segments the engine re-estimates column boundaries from text lengths because DocAI's equal-width grid misplaces uneven columns; other sources carry true per-cell geometry and are used as-is.
 - Segments feed BOTH halves of the app:
   1. **Reconciliation** — segment text is embedded in the LLM prompt (XML-tagged as untrusted data).
   2. **Evidence viewer** — `locateCitations` matches finding citations to segments/cells, and the segment geometry provides highlight boxes (with a text-layer refinement + full-row expansion on top).
 
-**Why the BFF pattern** — API keys never reach the browser, the path allowlist blocks traversal and out-of-surface endpoints (`/internal/*`, admin, billing, health), and the session is validated on every relay.
+**Why the BFF pattern** — the key is submitted once and then lives only in an HttpOnly cookie the browser cannot read, the path allowlist blocks traversal and out-of-surface endpoints (`/internal/*`, admin, billing, health), and the cookie is validated on every relay.
 
 ## Reconciliation pipeline
 
@@ -194,9 +196,9 @@ The app never talks to DocAI directly. Every document capability goes through th
 
 ## Security model
 
-- **BFF-only egress**: browsers never hold upstream API keys; every external call is authenticated and path-allowlisted server-side.
+- **BFF-only egress**: the browser submits the key once and never sees it again; every external call is authenticated and path-allowlisted server-side.
 - **Prompt injection**: document text is XML-tagged untrusted data with explicit ignore-instructions boundaries; file names sanitized; citation quotes must be verbatim; supplier emails are verified against the document text before use.
-- **Session**: encrypted JWT cookies (jose, HS256, 24h), HttpOnly, SameSite=Lax.
+- **Credential handling**: the user's API key is sealed in an encrypted JWT cookie (jose, HS256, 30 days), HttpOnly and SameSite=Lax, so client-side JavaScript can never read it. Signing out clears the cookie; the key itself stays valid until revoked at `platform.providus.ai`.
 - **Path validation**: `isSafeProxyPath` blocks traversal and out-of-surface DocAI endpoints; the reconcile route requires plain DocAI UUIDs for file ids.
 
 ## Tech Stack
@@ -214,20 +216,22 @@ Prerequisites: Node.js 20+ and [bun](https://bun.sh).
 
 ```bash
 bun install
-cp .env.example .env.local   # if you have one; otherwise create it manually
+cp .env.example .env.local   # then set SESSION_SECRET
 bun dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000, then paste a DocAI API key when prompted — get one from [platform.providus.ai](https://platform.providus.ai).
 
 ### Environment variables (`.env.local`)
 
 | Variable | Purpose |
 |----------|---------|
-| `DOCAI_BASE_URL` | Base URL of **Providus's Document Intelligence Layer** — the app relays all document/file/parse calls here |
+| `SESSION_SECRET` | **Required.** Encrypts the cookie holding the user's API key — generate with `openssl rand -base64 32` |
 | `DEEPSEEK_API_KEY` | API key for the DeepSeek LLM used during reconciliation |
-| `SESSION_SECRET` | Secret used to encrypt session cookies — generate with `openssl rand -base64 32` |
+| `DOCAI_BASE_URL` | Optional. Defaults to `https://api.providus.ai`; on-premises deployments point this at their own instance |
 | `LM_STUDIO_URL` | Optional: local OpenAI-compatible LLM server base URL (route `lmstudio/<model>`) |
+
+No DocAI key belongs in `.env` — each user supplies their own in the app.
 
 ### Models
 
@@ -248,7 +252,7 @@ bun test         # test suite (bun:test)
 src/
 |-- app/
 |   |-- api/
-|   |   |-- auth/            signup . signin . signout . session
+|   |   |-- auth/            key (validate + seal) . signout
 |   |   |-- docai/[...path]/ whitelisted BFF relay to Providus DocAI
 |   |   `-- reconcile/       SSE LLM stream -> report
 |   `-- page.tsx             dashboard shell
@@ -261,12 +265,13 @@ src/
 |-- engine/
 |   `-- reconcile.ts         pure reconciliation engine (prompt, parse, sanitize, derive)
 `-- lib/
-    |-- docai-proxy.ts       upstream fetch helper (session cookie + org header)
+    |-- docai-proxy.ts       upstream fetch helper (x-api-key)
     |-- evidence-utils.ts    citation locating, attribution, reasons, segmentRowBox
+    |-- docai-shapes.ts      unwraps DocAI's { file: ... } response envelope
     |-- pdf-lines.ts         text-layer line grouping for line-level highlights
     |-- kpi-utils.ts         KPI sanitization + payable derivation
     |-- file-table.ts        sort/search helpers for the Files table
-    |-- session.ts           encrypted JWT session cookies
+    |-- session.ts           encrypted JWT cookie holding the API key
     |-- proxy-path-validation.ts  BFF path allowlist
     `-- __tests__/           bun:test suites
 ```

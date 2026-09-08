@@ -14,14 +14,15 @@
  * instead of a garbage report.
  */
 
+import { unwrapFile } from './docai-shapes';
+
 /** Minimal docaiFetch-compatible surface (Response satisfies it). */
 export interface SegmentFetchContext {
   fetchFn: (
     path: string,
-    opts: { docaiSessionToken: string; docaiOrgId: string }
+    opts: { docaiApiKey: string }
   ) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
-  docaiSessionToken: string;
-  docaiOrgId: string;
+  docaiApiKey: string;
 }
 
 export interface SegmentsRetryOptions {
@@ -70,8 +71,7 @@ export async function fetchSegmentsWithRetry(
 
   const fetchSegments = async (): Promise<RawSegment[]> => {
     const res = await ctx.fetchFn(`/v1/files/${fileId}/segments`, {
-      docaiSessionToken: ctx.docaiSessionToken,
-      docaiOrgId: ctx.docaiOrgId,
+      docaiApiKey: ctx.docaiApiKey,
     });
     if (!res.ok) return [];
     const data = await res.json();
@@ -82,11 +82,14 @@ export async function fetchSegmentsWithRetry(
 
   const fetchJobStatus = async (): Promise<string> => {
     const res = await ctx.fetchFn(`/v1/files/${fileId}?include=processing`, {
-      docaiSessionToken: ctx.docaiSessionToken,
-      docaiOrgId: ctx.docaiOrgId,
+      docaiApiKey: ctx.docaiApiKey,
     });
     if (!res.ok) return '';
-    const data = (await res.json()) as { processing?: { latest_parse_job?: { status?: string } | null } | null } | null;
+    // Production nests this response under `.file`; unwrap so this reads
+    // correctly whether the response is nested or flat.
+    const data = unwrapFile<{ processing?: { latest_parse_job?: { status?: string } | null } | null } | null>(
+      await res.json()
+    );
     return data?.processing?.latest_parse_job?.status ?? '';
   };
 

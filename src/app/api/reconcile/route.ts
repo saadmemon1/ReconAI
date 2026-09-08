@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decryptDocAISession, COOKIE_NAME } from '@/lib/session';
+import { decryptApiKeySession, COOKIE_NAME } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
 import { fetchSegmentsWithRetry } from '@/lib/fetch-segments';
 import { reconcile, ReconciliationDocument } from '@/engine/reconcile';
 import { isDocAIUuid } from '@/lib/proxy-path-validation';
+import { unwrapFile } from '@/lib/docai-shapes';
 
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL!;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY!;
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const session = await decryptDocAISession(encrypted);
+  const session = await decryptApiKeySession(encrypted);
   if (!session) {
     return NextResponse.json({ error: 'Session expired' }, { status: 401 });
   }
@@ -70,22 +71,22 @@ export async function POST(req: NextRequest) {
         try {
           for (const fileId of fileIds) {
             const fileRes = await docaiFetch(`/v1/files/${fileId}`, {
-              docaiSessionToken: session.token,
-              docaiOrgId: session.orgId,
+              docaiApiKey: session.apiKey,
             });
             // F5: fail loudly if DocAI rejects the file (cross-org or missing) —
             // no more silently reconciling an empty/foreign document
             if (!fileRes.ok) {
               throw new Error(`File ${fileId} not accessible (HTTP ${fileRes.status})`);
             }
-            const fileData = await fileRes.json();
-            let fileName = fileData.filename || fileData.name || 'Unknown';
+            // Production nests file metadata under `.file`; unwrap so this
+            // stays correct whether the response is nested or flat.
+            const fileData = unwrapFile<{ filename?: string; name?: string }>(await fileRes.json());
+            let fileName = fileData?.filename || fileData?.name || 'Unknown';
 
             send({ type: 'stage', stage: 'retrieval-2' });
             const rawSegments = await fetchSegmentsWithRetry(fileId, fileName, {
               fetchFn: docaiFetch,
-              docaiSessionToken: session.token,
-              docaiOrgId: session.orgId,
+              docaiApiKey: session.apiKey,
             });
 
             // Get fileName from segments if file metadata doesn't have it
@@ -110,6 +111,11 @@ export async function POST(req: NextRequest) {
           controller.close();
           return;
         }
+
+        // Captured from the final SSE chunk's finish_reason — 'length' is the
+        // definitive truncation signal (model hit its output-token cap).
+        // Declared outside llmCall so it survives into the catch block below.
+        let lastFinishReason: string | undefined;
 
         const llmCall = async (prompt: string) => {
           const llmRes = await fetch(llmUrl, {
@@ -201,6 +207,8 @@ export async function POST(req: NextRequest) {
               const delta = chunk.choices?.[0]?.delta || {};
               const rDelta = delta.reasoning_content || delta.reasoning;
               const cDelta = delta.content;
+              const finishReason = chunk.choices?.[0]?.finish_reason;
+              if (finishReason) lastFinishReason = finishReason;
               if (rDelta) {
                 reasoning += rDelta;
                 send({ type: 'thinking', text: rDelta });
@@ -242,7 +250,16 @@ export async function POST(req: NextRequest) {
           send({ type: 'report', report: result.report });
         } catch (error: any) {
           console.error('Reconciliation error:', error);
-          send({ type: 'error', message: error.message || 'Reconciliation failed' });
+          let message = error.message || 'Reconciliation failed';
+          if (lastFinishReason) {
+            message = `${message} (finish_reason: ${lastFinishReason})`;
+          }
+          if (lastFinishReason === 'length') {
+            message =
+              `The model hit its output-token limit and returned incomplete JSON. ` +
+              `Try a model with a larger output budget, or fewer documents. ${message}`;
+          }
+          send({ type: 'error', message });
         } finally {
           controller.close();
         }
