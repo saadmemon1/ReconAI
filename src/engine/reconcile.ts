@@ -356,15 +356,75 @@ export function extractJSON(text: string): string {
   // Strip markdown code blocks if present
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) return jsonMatch[1].trim();
-  
+
   // Try to find JSON object boundaries
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start !== -1 && end !== -1 && end > start) {
     return text.slice(start, end + 1);
   }
-  
+
   return text.trim();
+}
+
+/** Structural bracket counts for a JSON-ish string, and whether each pair
+ * balances. Brackets inside string literals are ignored (a "{" in a
+ * description field must not skew the count) — this walks the text tracking
+ * string/escape state rather than just tallying characters. */
+export interface BracketBalance {
+  openBraces: number;
+  closeBraces: number;
+  bracesBalanced: boolean;
+  openBrackets: number;
+  closeBrackets: number;
+  bracketsBalanced: boolean;
+}
+
+export function analyzeBracketBalance(json: string): BracketBalance {
+  let openBraces = 0;
+  let closeBraces = 0;
+  let openBrackets = 0;
+  let closeBrackets = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (const ch of json) {
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (ch === '\\' && inString) {
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') openBraces++;
+    else if (ch === '}') closeBraces++;
+    else if (ch === '[') openBrackets++;
+    else if (ch === ']') closeBrackets++;
+  }
+
+  return {
+    openBraces,
+    closeBraces,
+    bracesBalanced: openBraces === closeBraces,
+    openBrackets,
+    closeBrackets,
+    bracketsBalanced: openBrackets === closeBrackets,
+  };
+}
+
+function formatBracketBalance(json: string): string {
+  const b = analyzeBracketBalance(json);
+  return (
+    `Bracket balance — braces: ${b.openBraces} open / ${b.closeBraces} close ` +
+    `(${b.bracesBalanced ? 'balanced' : 'UNBALANCED'}); brackets: ${b.openBrackets} open / ` +
+    `${b.closeBrackets} close (${b.bracketsBalanced ? 'balanced' : 'UNBALANCED'}).`
+  );
 }
 
 // === Validation ===
@@ -580,12 +640,15 @@ export async function reconcile(
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
-  } catch {
+  } catch (err) {
+    const parseErrorMessage = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `Failed to parse LLM response as JSON. Response length: ${response.length}. ` +
-      `Extracted JSON length: ${json.length}. ` +
+      `Failed to parse LLM response as JSON: ${parseErrorMessage}. ` +
+      `Response length: ${response.length}. Extracted JSON length: ${json.length}. ` +
       `Response starts with: ${JSON.stringify(response.slice(0, 300))}. ` +
-      `Extracted JSON starts with: ${JSON.stringify(json.slice(0, 300))}`
+      `Extracted JSON starts with (first 300 chars): ${JSON.stringify(json.slice(0, 300))}. ` +
+      `Extracted JSON ends with (last 300 chars): ${JSON.stringify(json.slice(-300))}. ` +
+      formatBracketBalance(json)
     );
   }
   

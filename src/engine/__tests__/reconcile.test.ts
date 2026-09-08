@@ -8,6 +8,45 @@ test('validates minimum 2 documents', async () => {
     .rejects.toThrow('Need at least 2');
 });
 
+test('parse failure error includes underlying JSON error and the response tail', async () => {
+  // Ends with "}" (an inner object closed) but is missing the closing "]"
+  // for "groups" and the closing "}" for the outer object — mirrors the
+  // real bug report: extractJSON returns its input unchanged because the
+  // response starts with "{" and ends with "}", yet is structurally
+  // unbalanced (truncated at the model's output-token limit).
+  const truncated =
+    '{"documentClassifications": [{"document": 1, "type": "purchase_order", "fileName": "PO.pdf"}], ' +
+    '"groups": [{"id": "g1"}';
+
+  // Compute the real engine's JSON.parse error message so this assertion
+  // doesn't hardcode a runtime-specific string.
+  let expectedParseError = '';
+  try {
+    JSON.parse(truncated);
+  } catch (e) {
+    expectedParseError = (e as Error).message;
+  }
+  expect(expectedParseError).not.toBe('');
+
+  const documents = Array(2).fill({ segments: [{ index: 0, content: 'test' }], fileName: 'doc.pdf' });
+
+  let thrown: Error | undefined;
+  try {
+    await reconcile({ documents, modelId: 'x' }, async () => truncated);
+  } catch (e) {
+    thrown = e as Error;
+  }
+
+  expect(thrown).toBeDefined();
+  expect(thrown!.message).toContain(expectedParseError);
+  // The tail of the (truncated) response/extracted JSON must be present —
+  // this is the evidence that was previously discarded. The error message
+  // embeds the tail via JSON.stringify, so compare against that same
+  // encoding (strip the surrounding quotes JSON.stringify adds).
+  const escapedTail = JSON.stringify(truncated.slice(-20)).slice(1, -1);
+  expect(thrown!.message).toContain(escapedTail);
+});
+
 test('handles valid multi-group report', async () => {
   const report = {
     documentClassifications: [

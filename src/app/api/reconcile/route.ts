@@ -112,6 +112,11 @@ export async function POST(req: NextRequest) {
           return;
         }
 
+        // Captured from the final SSE chunk's finish_reason — 'length' is the
+        // definitive truncation signal (model hit its output-token cap).
+        // Declared outside llmCall so it survives into the catch block below.
+        let lastFinishReason: string | undefined;
+
         const llmCall = async (prompt: string) => {
           const llmRes = await fetch(llmUrl, {
             method: 'POST',
@@ -202,6 +207,8 @@ export async function POST(req: NextRequest) {
               const delta = chunk.choices?.[0]?.delta || {};
               const rDelta = delta.reasoning_content || delta.reasoning;
               const cDelta = delta.content;
+              const finishReason = chunk.choices?.[0]?.finish_reason;
+              if (finishReason) lastFinishReason = finishReason;
               if (rDelta) {
                 reasoning += rDelta;
                 send({ type: 'thinking', text: rDelta });
@@ -243,7 +250,16 @@ export async function POST(req: NextRequest) {
           send({ type: 'report', report: result.report });
         } catch (error: any) {
           console.error('Reconciliation error:', error);
-          send({ type: 'error', message: error.message || 'Reconciliation failed' });
+          let message = error.message || 'Reconciliation failed';
+          if (lastFinishReason) {
+            message = `${message} (finish_reason: ${lastFinishReason})`;
+          }
+          if (lastFinishReason === 'length') {
+            message =
+              `The model hit its output-token limit and returned incomplete JSON. ` +
+              `Try a model with a larger output budget, or fewer documents. ${message}`;
+          }
+          send({ type: 'error', message });
         } finally {
           controller.close();
         }
