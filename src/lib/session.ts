@@ -1,39 +1,48 @@
 import { SignJWT, jwtVerify } from 'jose';
 
-const SESSION_SECRET = new TextEncoder().encode(
-  process.env.SESSION_SECRET!
-);
+// Read lazily (inside the functions that need it) rather than at module
+// scope: a module-scope read makes correctness depend on import order (an
+// unrelated import that transitively pulls in this module before the env
+// is configured silently poisons every session call with an empty secret),
+// and it turns a missing env var into a cryptic jose error instead of a
+// clear one.
+function sessionSecret(): Uint8Array {
+  const raw = process.env.SESSION_SECRET;
+  if (!raw) throw new Error('SESSION_SECRET is not set');
+  return new TextEncoder().encode(raw);
+}
 
 const COOKIE_NAME = 'reconai-session';
-const DOCAI_COOKIE_NAME = 'better-auth.session_token';
 
-interface DocAISession {
-  token: string;
-  orgId: string;
+interface ApiKeySession {
+  apiKey: string;
   expiresAt: number;
 }
 
-export async function encryptDocAISession(
-  docaiSessionToken: string,
-  docaiOrgId: string
+export async function encryptApiKeySession(
+  docaiApiKey: string
 ): Promise<string> {
-  return new SignJWT({ 
-    docaiSessionToken, 
-    docaiOrgId 
+  return new SignJWT({
+    docaiApiKey,
   })
     .setProtectedHeader({ alg: 'HS256' })
-    .setExpirationTime('24h')
-    .sign(SESSION_SECRET);
+    .setExpirationTime('30d')
+    .sign(sessionSecret());
 }
 
-export async function decryptDocAISession(
+export async function decryptApiKeySession(
   encryptedToken: string
-): Promise<DocAISession | null> {
+): Promise<ApiKeySession | null> {
+  // Resolve the secret outside the try/catch below: that catch exists to
+  // turn a malformed/expired/invalid token into a null session, not to
+  // swallow a misconfigured server (missing SESSION_SECRET). Keeping this
+  // call outside lets that error propagate instead of masquerading as an
+  // ordinary "session expired".
+  const secret = sessionSecret();
   try {
-    const { payload } = await jwtVerify(encryptedToken, SESSION_SECRET);
+    const { payload } = await jwtVerify(encryptedToken, secret);
     return {
-      token: payload.docaiSessionToken as string,
-      orgId: payload.docaiOrgId as string,
+      apiKey: payload.docaiApiKey as string,
       expiresAt: (payload.exp as number) * 1000,
     };
   } catch {
@@ -42,11 +51,14 @@ export async function decryptDocAISession(
 }
 
 export function getSessionCookieHeader(encryptedToken: string): string {
-  return `${COOKIE_NAME}=${encryptedToken}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400`;
+  // 30 days: a key's own expiry (none / 1 year / 30 / 7 days) is configured
+  // per key in the platform and isn't exposed by the API, so this cookie
+  // can't mirror it — an expired or revoked key simply 401s on next use.
+  return `${COOKIE_NAME}=${encryptedToken}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`;
 }
 
 export function clearSessionCookieHeader(): string {
   return `${COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0`;
 }
 
-export { COOKIE_NAME, DOCAI_COOKIE_NAME };
+export { COOKIE_NAME };

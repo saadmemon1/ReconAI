@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decryptDocAISession, COOKIE_NAME } from '@/lib/session';
+import { decryptApiKeySession, COOKIE_NAME } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
 import { isSafeProxyPath } from '@/lib/proxy-path-validation';
 
@@ -43,7 +43,7 @@ async function handleRequest(
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const session = await decryptDocAISession(encrypted);
+  const session = await decryptApiKeySession(encrypted);
   if (!session) {
     return NextResponse.json({ error: 'Session expired' }, { status: 401 });
   }
@@ -74,8 +74,7 @@ async function handleRequest(
   const res = await docaiFetch(`${docaiPath}${queryString}`, {
     method,
     body,
-    docaiSessionToken: session.token,
-    docaiOrgId: session.orgId,
+    docaiApiKey: session.apiKey,
   });
 
   // Forward response — binary-safe: text responses pass through as text,

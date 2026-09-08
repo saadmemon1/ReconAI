@@ -33,7 +33,7 @@ export interface SegmentLike {
     ymax: number;
   };
   cells?: SegmentCell[];
-  cellsSource?: string; // 'projection' (true cell geometry) | 'grid-estimate' (columns estimated)
+  cellsSource?: string; // 'projection' (true cell geometry) | 'grid-estimate' (columns estimated) | 'table-former' — non-'grid-estimate' values correctly fall through to cellBox()
 }
 
 /**

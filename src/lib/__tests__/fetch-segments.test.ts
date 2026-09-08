@@ -3,8 +3,7 @@ import { fetchSegmentsWithRetry, SegmentFetchError, type SegmentFetchContext } f
 
 const ctx: SegmentFetchContext = {
   fetchFn: async () => ({ ok: true, json: async () => [] }),
-  docaiSessionToken: 't',
-  docaiOrgId: 'o',
+  docaiApiKey: 'k',
 };
 
 const noopSleep = async () => {};
@@ -98,6 +97,16 @@ describe('fetchSegmentsWithRetry', () => {
         { sleep: realSleep, totalPatienceMs: 60, pollEveryMs: 5 }
       )
     ).rejects.toThrow('09_Invoice_INV-KPP-2231.pdf');
+  });
+
+  test('fails immediately when the parse job status is nested under .file (production shape)', async () => {
+    const fn = async (path: string) =>
+      path.includes('/segments')
+        ? { ok: true, json: async () => [] }
+        : { ok: true, json: async () => ({ file: { processing: { latest_parse_job: { status: 'failed' } } } }) };
+    await expect(
+      fetchSegmentsWithRetry('f1', '09_Invoice.pdf', { ...ctx, fetchFn: fn }, { sleep: noopSleep })
+    ).rejects.toThrow('failed to parse');
   });
 
   test('throws a waiting message when the job never completes within the budget', async () => {

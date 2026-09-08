@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decryptDocAISession, COOKIE_NAME } from '@/lib/session';
+import { decryptApiKeySession, COOKIE_NAME } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
 import { fetchSegmentsWithRetry } from '@/lib/fetch-segments';
 import { reconcile, ReconciliationDocument } from '@/engine/reconcile';
 import { isDocAIUuid } from '@/lib/proxy-path-validation';
+import { unwrapFile } from '@/lib/docai-shapes';
 
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL!;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY!;
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  const session = await decryptDocAISession(encrypted);
+  const session = await decryptApiKeySession(encrypted);
   if (!session) {
     return NextResponse.json({ error: 'Session expired' }, { status: 401 });
   }
@@ -70,22 +71,22 @@ export async function POST(req: NextRequest) {
         try {
           for (const fileId of fileIds) {
             const fileRes = await docaiFetch(`/v1/files/${fileId}`, {
-              docaiSessionToken: session.token,
-              docaiOrgId: session.orgId,
+              docaiApiKey: session.apiKey,
             });
             // F5: fail loudly if DocAI rejects the file (cross-org or missing) —
             // no more silently reconciling an empty/foreign document
             if (!fileRes.ok) {
               throw new Error(`File ${fileId} not accessible (HTTP ${fileRes.status})`);
             }
-            const fileData = await fileRes.json();
-            let fileName = fileData.filename || fileData.name || 'Unknown';
+            // Production nests file metadata under `.file`; unwrap so this
+            // stays correct whether the response is nested or flat.
+            const fileData = unwrapFile<{ filename?: string; name?: string }>(await fileRes.json());
+            let fileName = fileData?.filename || fileData?.name || 'Unknown';
 
             send({ type: 'stage', stage: 'retrieval-2' });
             const rawSegments = await fetchSegmentsWithRetry(fileId, fileName, {
               fetchFn: docaiFetch,
-              docaiSessionToken: session.token,
-              docaiOrgId: session.orgId,
+              docaiApiKey: session.apiKey,
             });
 
             // Get fileName from segments if file metadata doesn't have it

@@ -5,7 +5,6 @@ import { WorkspaceManager } from './workspace-manager';
 import { FileManager } from './file-manager';
 import { ReconcileRunner } from './reconcile-runner';
 import { Button } from './ui/button';
-import { Avatar, AvatarFallback } from './ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
-import { LogOut, FileText, FileBarChart, Coins } from 'lucide-react';
+import { LogOut, FileText, FileBarChart, Coins, KeyRound } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
 import { NavBar } from './ui/tubelight-navbar';
 
@@ -34,20 +33,12 @@ export interface ReconcileRequest {
 }
 
 export function Dashboard() {
-  const { signOut, user, orgName } = useAuth();
+  const { signOut } = useAuth();
   const [tab, setTab] = useState<Tab>('files');
   const [selectedKB, setSelectedKB] = useState<string | null>(null);
   const [wsRefreshKey, setWsRefreshKey] = useState(0);
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [reconcileRequest, setReconcileRequest] = useState<ReconcileRequest | null>(null);
-
-  // Avatar initials: from the user's name, else the email's first letter.
-  const displayName = user?.name?.trim() || user?.email || '';
-  const initials = (displayName || '?')
-    .split(/\s+/)
-    .map(part => part[0]?.toUpperCase() || '')
-    .join('')
-    .slice(0, 2);
 
   const handleReconcile = (fileIds: string[], modelId: string) => {
     setReconcileRequest({ fileIds, modelId, nonce: Date.now() });
@@ -90,7 +81,7 @@ export function Dashboard() {
           )}
         </nav>
 
-        {/* Sidebar bottom: profile button — avatar + name in one row. The
+        {/* Sidebar bottom: account button — key icon + label in one row. The
             button's click target runs all the way down to the rail's bottom
             edge (pt-3 pb-6), while the visible row itself floats ~24px above
             it; the account menu opens upward */}
@@ -106,35 +97,31 @@ export function Dashboard() {
                 />
               }
             >
-              <Avatar className="size-8 shrink-0">
-                <AvatarFallback className="bg-primary text-primary-foreground text-sm">{initials || '?'}</AvatarFallback>
-              </Avatar>
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <KeyRound className="size-4" />
+              </span>
               <span className="hidden min-w-0 flex-1 truncate text-left text-sm font-medium text-foreground md:block">
-                {displayName || 'Account'}
+                Account
               </span>
             </DropdownMenuTrigger>
-            {/* Cozy 3-section popup: identity / credits / sign out. Every row
-                shares the same padding + icon-gutter rhythm; the credits are a
-                plain text row (no pill) so nothing sticks out. */}
+            {/* Cozy popup: credit balance / actions. Every row shares the
+                same padding + icon-gutter rhythm; the credits are a plain
+                text row (no pill) so nothing sticks out. */}
             <DropdownMenuContent side="top" align="start" className="w-60 p-1.5">
-              <div className="rounded-md px-2.5 py-3">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {displayName || 'Account'}
-                </p>
-                {orgName && (
-                  <p className="mt-0.5 truncate text-xs text-secondary">{orgName}</p>
-                )}
-              </div>
               <div className="flex items-center gap-2.5 rounded-md px-2.5 py-2.5">
                 <Coins className="size-4 shrink-0 text-secondary" />
                 <span className="text-sm text-foreground">
                   <CreditDisplay />
                 </span>
               </div>
-              {/* minimal divider above the action — subtle but visible
+              {/* minimal divider above the actions — subtle but visible
                   (bg-foreground/15: the old bg-border hairline vanished on
                   HiDPI) */}
               <Separator className="my-2 bg-foreground/15" />
+              <DropdownMenuItem className="py-2.5" onClick={() => signOut()}>
+                <KeyRound className="size-4" />
+                Change API key
+              </DropdownMenuItem>
               <DropdownMenuItem
                 className="py-2.5 text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
                 onClick={() => setSignOutOpen(true)}
@@ -157,7 +144,8 @@ export function Dashboard() {
           <DialogHeader>
             <DialogTitle>Sign out of ReconAI?</DialogTitle>
             <DialogDescription>
-              You will need to sign in again to access your workspaces and reports.
+              This forgets your stored API key on this device. You&apos;ll need to
+              enter it again to access your workspaces and reports.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
