@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { extractJSON, analyzeBracketBalance } from '../reconcile';
+import { extractJSON, analyzeBracketBalance, escapeRawControlChars } from '../reconcile';
 
 const valid = '{"a": 1}';
 
@@ -65,5 +65,42 @@ describe('analyzeBracketBalance', () => {
     expect(result.openBrackets).toBe(0);
     expect(result.closeBrackets).toBe(0);
     expect(result.bracketsBalanced).toBe(true);
+  });
+});
+
+describe('escapeRawControlChars', () => {
+  test('escapes a literal raw newline inside a string value so JSON.parse succeeds', () => {
+    // Simulates a model writing an actual \n byte in a multi-line "summary"
+    // field instead of the JSON-escaped "\\n" sequence — valid to a human,
+    // invalid per the JSON spec ("Bad control character in string literal").
+    const raw = '{"summary":"line one\nline two"}';
+    expect(() => JSON.parse(raw)).toThrow();
+
+    const fixed = escapeRawControlChars(raw);
+    const parsed = JSON.parse(fixed);
+    expect(parsed.summary).toBe('line one\nline two');
+  });
+
+  test('escapes raw tabs and carriage returns inside strings', () => {
+    const raw = '{"a":"tab\there","b":"cr\rhere"}';
+    const parsed = JSON.parse(escapeRawControlChars(raw));
+    expect(parsed.a).toBe('tab\there');
+    expect(parsed.b).toBe('cr\rhere');
+  });
+
+  test('leaves well-formed JSON untouched', () => {
+    const valid = '{"a": 1, "b": "no control chars here"}';
+    expect(escapeRawControlChars(valid)).toBe(valid);
+  });
+
+  test('does not touch already-escaped sequences', () => {
+    const alreadyEscaped = '{"a":"line one\\nline two"}';
+    expect(escapeRawControlChars(alreadyEscaped)).toBe(alreadyEscaped);
+    expect(JSON.parse(escapeRawControlChars(alreadyEscaped)).a).toBe('line one\nline two');
+  });
+
+  test('ignores whitespace formatting outside of strings (not inside a string value)', () => {
+    const formatted = '{\n  "a": 1\n}';
+    expect(JSON.parse(escapeRawControlChars(formatted))).toEqual({ a: 1 });
   });
 });

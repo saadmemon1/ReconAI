@@ -367,6 +367,52 @@ export function extractJSON(text: string): string {
   return text.trim();
 }
 
+const CONTROL_CHAR_ESCAPES: Record<string, string> = {
+  '\n': '\\n',
+  '\r': '\\r',
+  '\t': '\\t',
+  '\b': '\\b',
+  '\f': '\\f',
+};
+
+/** Repairs a common LLM JSON mistake: writing a literal control character
+ * (raw newline, tab, etc.) inside a string value instead of its escaped
+ * form — human-readable but invalid JSON ("Bad control character in string
+ * literal"), seen from Gemini when a field like "summary" spans multiple
+ * lines. Walks the text tracking string/escape state (like
+ * analyzeBracketBalance) and escapes only control characters found INSIDE
+ * string values — JSON formatting whitespace outside strings is untouched. */
+export function escapeRawControlChars(json: string): string {
+  let result = '';
+  let inString = false;
+  let escapeNext = false;
+
+  for (const ch of json) {
+    if (escapeNext) {
+      result += ch;
+      escapeNext = false;
+      continue;
+    }
+    if (ch === '\\' && inString) {
+      result += ch;
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      result += ch;
+      continue;
+    }
+    if (inString && ch.charCodeAt(0) < 0x20) {
+      result += CONTROL_CHAR_ESCAPES[ch] || `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`;
+      continue;
+    }
+    result += ch;
+  }
+
+  return result;
+}
+
 /** Structural bracket counts for a JSON-ish string, and whether each pair
  * balances. Brackets inside string literals are ignored (a "{" in a
  * description field must not skew the count) — this walks the text tracking
@@ -636,7 +682,7 @@ export async function reconcile(
   const reasoning = typeof rawResponse === 'object' ? rawResponse.reasoning : undefined;
   
   // Parse JSON
-  const json = extractJSON(response);
+  const json = escapeRawControlChars(extractJSON(response));
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);

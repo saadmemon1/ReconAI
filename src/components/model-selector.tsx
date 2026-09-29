@@ -20,6 +20,12 @@ const DEEPSEEK_CLOUD: ModelInfo[] = [
   { id: 'deepseek/deepseek-v4-pro', provider: 'deepseek', name: 'DeepSeek V4 Pro', available: true },
 ];
 
+// Gemini cloud models
+const GEMINI_CLOUD: ModelInfo[] = [
+  { id: 'gemini/gemini-3.1-flash-lite', provider: 'gemini', name: 'Gemini 3.1 Flash Lite', available: true },
+  { id: 'gemini/gemini-pro-latest', provider: 'gemini', name: 'Gemini Pro (latest)', available: true },
+];
+
 export function ModelSelector({
   value,
   onChange
@@ -35,10 +41,10 @@ export function ModelSelector({
         const res = await fetch('/api/models');
         const data = await res.json();
         if (Array.isArray(data.models)) {
-          // Filter out any duplicates that appear in DEEPSEEK_CLOUD
-          const deepseekIds = new Set(DEEPSEEK_CLOUD.map(m => m.id));
+          // Filter out any duplicates that appear in the hardcoded cloud lists
+          const cloudIds = new Set([...DEEPSEEK_CLOUD, ...GEMINI_CLOUD].map(m => m.id));
           const filtered = data.models.filter(
-            (model: FetchedModel) => !deepseekIds.has(model.id)
+            (model: FetchedModel) => !cloudIds.has(model.id)
           );
           setLmStudioModels(filtered);
         }
@@ -59,6 +65,11 @@ export function ModelSelector({
       <option value="">Select a model...</option>
       <optgroup label="DeepSeek (cloud)">
         {DEEPSEEK_CLOUD.map(m => (
+          <option key={m.id} value={m.id}>{m.name}</option>
+        ))}
+      </optgroup>
+      <optgroup label="Gemini (cloud)">
+        {GEMINI_CLOUD.map(m => (
           <option key={m.id} value={m.id}>{m.name}</option>
         ))}
       </optgroup>

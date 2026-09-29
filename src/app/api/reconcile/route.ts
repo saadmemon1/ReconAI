@@ -9,6 +9,11 @@ import { unwrapFile } from '@/lib/docai-shapes';
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL!;
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY!;
 const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
+// Gemini's OpenAI-compatible layer, not the native generateContent API — this
+// lets Gemini reuse the same chat/completions request/response shape (and
+// streaming parser below) as DeepSeek and LM Studio.
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
 
 export async function POST(req: NextRequest) {
   const encrypted = req.cookies.get(COOKIE_NAME)?.value;
@@ -36,22 +41,26 @@ export async function POST(req: NextRequest) {
 
   try {
     // Determine LLM provider and endpoint
-    // modelId format: "lmstudio/qwen/qwen3-vl-30b" or "deepseek/deepseek-v4-flash"
+    // modelId format: "lmstudio/qwen/qwen3-vl-30b", "deepseek/deepseek-v4-flash", or "gemini/gemini-flash-latest"
     const slashIdx = modelId.indexOf('/');
     const provider = slashIdx > 0 ? modelId.slice(0, slashIdx) : 'lmstudio';
     const modelName = slashIdx > 0 ? modelId.slice(slashIdx + 1) : modelId;
     // LM Studio expects full path after provider prefix (e.g. qwen/qwen3-vl-30b)
-    // DeepSeek expects the model name as-is (e.g. deepseek-v4-flash)
-    
+    // DeepSeek and Gemini expect the model name as-is (e.g. deepseek-v4-flash, gemini-flash-latest)
+
     const llmUrl = provider === 'deepseek'
       ? `${DEEPSEEK_BASE_URL}/chat/completions`
+      : provider === 'gemini'
+      ? `${GEMINI_BASE_URL}/chat/completions`
       : `${LM_STUDIO_URL}/v1/chat/completions`;
-    
+
     const llmHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     };
     if (provider === 'deepseek') {
       llmHeaders['Authorization'] = `Bearer ${DEEPSEEK_API_KEY}`;
+    } else if (provider === 'gemini') {
+      llmHeaders['Authorization'] = `Bearer ${GEMINI_API_KEY}`;
     }
 
     // Live SSE stream: forward LLM reasoning deltas as they arrive, then the report
@@ -204,6 +213,17 @@ export async function POST(req: NextRequest) {
               } catch {
                 continue;
               }
+              // Some providers (observed on Gemini under high load) emit a
+              // valid-JSON error object mid-stream instead of a proper SSE
+              // error frame or a clean HTTP failure. Without this check it
+              // looks like an empty delta — the loop keeps going, the
+              // connection then closes, and the truncated content reaches
+              // the JSON parser as if it were a complete response.
+              if (chunk.error) {
+                throw new Error(
+                  `LLM API error (${provider}, mid-stream): ${chunk.error.message || JSON.stringify(chunk.error)}`
+                );
+              }
               const delta = chunk.choices?.[0]?.delta || {};
               const rDelta = delta.reasoning_content || delta.reasoning;
               const cDelta = delta.content;
@@ -228,6 +248,18 @@ export async function POST(req: NextRequest) {
                 }
               }
             }
+          }
+
+          // A normal completion always ends with a chunk carrying a
+          // finish_reason ('stop', 'length', etc.) before the stream closes.
+          // Its absence means the connection was cut mid-generation (seen
+          // with Gemini under high load) — surface that plainly instead of
+          // letting a truncated response reach the JSON parser as a cryptic
+          // "unexpected token" error.
+          if (!lastFinishReason) {
+            throw new Error(
+              `LLM API (${provider}) closed the connection before finishing its response — likely provider overload. Please retry.`
+            );
           }
 
           // Last resort: some reasoning models emit the final JSON inside the reasoning text
