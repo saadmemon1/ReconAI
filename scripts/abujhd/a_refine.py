@@ -15,7 +15,7 @@ _ROW = re.compile(
     r"(?P<cortex>\d{8})\s+(?P<avail>[\d,.()]+)\s+\S+\s+(?P<code>\d+)\s+(?P<signed>-?[\d.]+)\s+"
     r"(?P<load_type>.*?)\s{2,}(?P<load_src>\S+)\s*$")
 
-KIND = {"201": "load", "1": "atm", "30": "atm", "35": "atm"}
+KIND = {"201": "load", "1": "atm", "30": "inquiry", "35": "inquiry"}   # 30/35: balance inquiries, amount 0
 
 def parse_statement_line(line):
     m = _ROW.match(line)

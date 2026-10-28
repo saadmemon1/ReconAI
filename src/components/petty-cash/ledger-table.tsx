@@ -1,12 +1,14 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TABLE_HEAD_BAND } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { money, type LedgerLine, type PettyReport } from '@/lib/petty-cash-report';
 import { FilterChip, StatusChip } from './chips';
+import { useDisplay } from './display';
 
 /** The ledger lines table; shared by the Ledger tab and the pane's Ledger source (which highlights one code). */
 export function LedgerLines({ lines, highlightCode }: { lines: LedgerLine[]; highlightCode?: string }) {
+  const { headBand, date } = useDisplay();
   const firstHit = useRef<HTMLTableRowElement>(null);
   useEffect(() => {
     const row = firstHit.current;
@@ -22,12 +24,12 @@ export function LedgerLines({ lines, highlightCode }: { lines: LedgerLine[]; hig
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className={TABLE_HEAD_BAND}>Code</TableHead>
-            <TableHead className={TABLE_HEAD_BAND}>Date</TableHead>
-            <TableHead className={cn(TABLE_HEAD_BAND, 'text-right')}>Debit</TableHead>
-            <TableHead className={cn(TABLE_HEAD_BAND, 'text-right')}>Credit</TableHead>
-            <TableHead className={TABLE_HEAD_BAND}>Text</TableHead>
-            <TableHead className={TABLE_HEAD_BAND}>Status</TableHead>
+            <TableHead className={headBand}>Code</TableHead>
+            <TableHead className={headBand}>Date</TableHead>
+            <TableHead className={cn(headBand, 'text-right')}>Debit</TableHead>
+            <TableHead className={cn(headBand, 'text-right')}>Credit</TableHead>
+            <TableHead className={headBand}>Text</TableHead>
+            <TableHead className={headBand}>Status</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -42,7 +44,7 @@ export function LedgerLines({ lines, highlightCode }: { lines: LedgerLine[]; hig
             return (
               <TableRow key={`${l.row}-${l.code}`} ref={ref} aria-current={hit ? 'true' : undefined} className={cn(hit && 'bg-primary/10 hover:bg-primary/10')}>
                 <TableCell className="whitespace-nowrap font-mono text-xs">{l.code}</TableCell>
-                <TableCell className="whitespace-nowrap font-mono text-xs">{l.date}</TableCell>
+                <TableCell className="whitespace-nowrap font-mono text-xs">{date(l.date)}</TableCell>
                 <TableCell className="text-right font-mono text-xs tabular-nums">{money(l.debit)}</TableCell>
                 <TableCell className="text-right font-mono text-xs tabular-nums">{money(l.credit)}</TableCell>
                 <TableCell className="max-w-[360px] text-xs"><div className="truncate" title={l.text}>{l.text}</div></TableCell>

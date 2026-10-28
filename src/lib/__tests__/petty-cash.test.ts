@@ -34,8 +34,9 @@ describe('findFolderForKb', () => {
 });
 
 describe('isAllowedReportPath', () => {
-  test('accepts the three shapes', () => {
+  test('accepts the report, the review decisions and the two image folders', () => {
     expect(isAllowedReportPath(['report.json'])).toBe(true);
+    expect(isAllowedReportPath(['reviews.json'])).toBe(true);
     expect(isAllowedReportPath(['pages', 'page-01.png'])).toBe(true);
     expect(isAllowedReportPath(['crops', 'stmt-624417160330.png'])).toBe(true);
   });

@@ -3,8 +3,10 @@ import { useEffect, useState } from 'react';
 import { LocateFixed, XIcon, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { imageUrl, money, type PaneSources, type PettyReport, type Source } from '@/lib/petty-cash-report';
+import { imageUrl, money, type Basis, type EvidenceItem, type PaneSources, type PettyReport, type Source } from '@/lib/petty-cash-report';
+import { EvidenceTrail } from './evidence';
 import { LedgerLines } from './ledger-table';
+import { useDisplay } from './display';
 import { PageStack, type PageBox } from './page-stack';
 
 const ZOOM_MIN = 50;
@@ -18,8 +20,10 @@ const SOURCE_TABS: Array<{ key: Source; label: string }> = [
 ];
 
 /** Docked evidence pane: file header, zoom, jump-to-citation, and Statement / Receipt / Ledger tabs for one selection. */
-export function CitationPane({ report, kbId, sources, initialSource, onClose, autoFocusClose = false }: {
+export function CitationPane({ report, kbId, sources, initialSource, onClose, autoFocusClose = false, trail }: {
   report: PettyReport;
+  /** The selection's evidence trail ("How we know"), shown under the source tabs; absent on reports built before it existed. */
+  trail?: { items: EvidenceItem[]; basis?: Basis };
   kbId: string;
   sources: PaneSources;
   initialSource: Source;
@@ -36,6 +40,8 @@ export function CitationPane({ report, kbId, sources, initialSource, onClose, au
   const [source, setSource] = useState<Source>(
     () => (available[initialSource] ? initialSource : (SOURCE_TABS.map(t => t.key).find(k => available[k]) ?? initialSource))
   );
+  const { date } = useDisplay();
+  const title = sources.date ? `${date(sources.date)}${sources.title.slice(sources.date.length)}` : sources.title;
   const [zoom, setZoom] = useState(100);
   const [jump, setJump] = useState(0);
   const [pageInView, setPageInView] = useState<number | null>(null);
@@ -67,7 +73,7 @@ export function CitationPane({ report, kbId, sources, initialSource, onClose, au
   return (
     <aside aria-label="Evidence" className="flex h-full flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-medium" title={sources.title}>{sources.title}</p>
+        <p className="min-w-0 flex-1 truncate text-sm font-medium" title={title}>{title}</p>
         {isPages && (
           <div className="flex shrink-0 items-center gap-0.5">
             <Button variant="ghost" size="icon-sm" title="Zoom out" aria-label="Zoom out" disabled={zoom <= ZOOM_MIN} onClick={() => setZoom(z => Math.max(ZOOM_MIN, z - ZOOM_STEP))}>
@@ -116,6 +122,12 @@ export function CitationPane({ report, kbId, sources, initialSource, onClose, au
           {isPages && images.length > 0 && <span className="shrink-0">· page {pageInView ?? citedPage} of {images.length}</span>}
         </p>
       </div>
+      {trail && trail.items.length > 0 && (
+        <details className="group border-b border-border px-3 py-2">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">How we know · {trail.items.length} facts</summary>
+          <div className="max-h-64 overflow-auto pt-2"><EvidenceTrail items={trail.items} basis={trail.basis} title="Sources and their strength" /></div>
+        </details>
+      )}
       <div className="min-h-0 flex-1">
         {isPages ? (
           // Keyed by source: the statement file and the receipts file each get their own stack (fresh scroll, fresh image nodes).

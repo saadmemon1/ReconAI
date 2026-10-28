@@ -1,16 +1,18 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TABLE_HEAD_BAND } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import {
-  countByStatus, filterReceipts, imageUrl, money, RECEIPT_FILTERS, rowByRef,
+  countByStatus, filterReceipts, imageUrl, money, RECEIPT_FILTERS, rowByRef, statusMeta,
   type PettyReport, type ReceiptGroup, type Selection,
 } from '@/lib/petty-cash-report';
 import { CitationChip, FilterChip, StatusChip } from './chips';
+import { useDisplay } from './display';
 
 /** `compact` drops the Receipt date column and the merchant part of candidate chips so the table fits beside the docked pane. */
-export function ReceiptsTable({ report, kbId, selection, onSelect, compact = false }: { report: PettyReport; kbId: string; selection: Selection | null; onSelect: (s: Selection) => void; compact?: boolean }) {
-  const [status, setStatus] = useState('ALL');
+export function ReceiptsTable({ report, kbId, selection, onSelect, compact = false, initialStatus = 'ALL' }: { report: PettyReport; kbId: string; selection: Selection | null; onSelect: (s: Selection) => void; compact?: boolean; initialStatus?: string }) {
+  const { headBand, date } = useDisplay();
+  const [status, setStatus] = useState(initialStatus);
   const counts = useMemo(() => countByStatus(report.receipts), [report.receipts]);
   const visible = useMemo(() => filterReceipts(report.receipts, status), [report.receipts, status]);
   const selectedId = selection?.kind === 'receipt' ? selection.id : null;
@@ -19,7 +21,7 @@ export function ReceiptsTable({ report, kbId, selection, onSelect, compact = fal
   const rowChip = (ref: string, score?: number) => {
     const row = rowByRef(report, ref);
     const label = row
-      ? `${row.date} · ${money(row.amount)}${score === undefined ? '' : compact ? ` · score ${score}` : ` · ${row.merchant.slice(0, 24)} · score ${score}`}`
+      ? `${date(row.date)} · ${money(row.amount)}${score === undefined ? '' : compact ? ` · score ${score}` : ` · ${row.merchant.slice(0, 24)} · score ${score}`}`
       : ref;
     return (
       <CitationChip
@@ -48,19 +50,20 @@ export function ReceiptsTable({ report, kbId, selection, onSelect, compact = fal
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1">
         {RECEIPT_FILTERS.map(f => (
-          <FilterChip key={f.key} label={f.label} count={counts[f.key] ?? 0} active={status === f.key} onClick={() => setStatus(f.key)} />
+          <FilterChip key={f.key} label={f.label} count={counts[f.key] ?? 0} active={status === f.key} onClick={() => setStatus(f.key)}
+            tone={f.key === 'ALL' ? undefined : statusMeta(f.key).tone} />
         ))}
       </div>
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className={TABLE_HEAD_BAND}>Status</TableHead>
-              <TableHead className={TABLE_HEAD_BAND}>Receipt</TableHead>
-              {!compact && <TableHead className={TABLE_HEAD_BAND}>Receipt date</TableHead>}
-              <TableHead className={cn(TABLE_HEAD_BAND, 'text-right')}>Amount</TableHead>
-              <TableHead className={TABLE_HEAD_BAND}>Merchant</TableHead>
-              <TableHead className={TABLE_HEAD_BAND}>Statement rows</TableHead>
+              <TableHead className={headBand}>Status</TableHead>
+              <TableHead className={headBand}>Receipt</TableHead>
+              {!compact && <TableHead className={headBand}>Receipt date</TableHead>}
+              <TableHead className={cn(headBand, 'text-right')}>Amount</TableHead>
+              <TableHead className={headBand}>Merchant</TableHead>
+              <TableHead className={headBand}>Statement rows</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -94,7 +97,7 @@ export function ReceiptsTable({ report, kbId, selection, onSelect, compact = fal
                     <span className="font-mono text-xs">p{g.page} · {g.id}</span>
                   </button>
                 </TableCell>
-                {!compact && <TableCell className="font-mono text-xs">{g.date ?? <span className="text-muted-foreground">no date</span>}</TableCell>}
+                {!compact && <TableCell className="font-mono text-xs">{g.date ? date(g.date) : <span className="text-muted-foreground">no date</span>}</TableCell>}
                 <TableCell className="text-right font-mono text-xs tabular-nums">{amountCell(g)}</TableCell>
                 <TableCell className="max-w-[220px]">
                   {g.merchant ? <div className="truncate" title={g.merchant}>{g.merchant}</div> : <span className="text-muted-foreground">no merchant read</span>}

@@ -1,6 +1,6 @@
 // Petty-cash report folders: data/<client>/ with a config.json whose kb_id names the DocAI workspace.
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const PLAIN = /^[A-Za-z0-9_.-]+$/;
@@ -21,10 +21,10 @@ export function findFolderForKb(dataDir: string, kbId: string): string | null {
   return null;
 }
 
-/** report.json | pages/<name>.png | crops/<name>.png, every segment plain-safe (no '..', no '%', no '/'). */
+/** report.json | reviews.json | pages/<name>.png | crops/<name>.png, every segment plain-safe (no '..', no '%', no '/'). */
 export function isAllowedReportPath(segments: string[]): boolean {
   if (!segments.every(s => PLAIN.test(s) && s !== '..' && s !== '.')) return false;
-  if (segments.length === 1) return segments[0] === 'report.json';
+  if (segments.length === 1) return segments[0] === 'report.json' || segments[0] === 'reviews.json';
   return segments.length === 2 && (segments[0] === 'pages' || segments[0] === 'crops') && segments[1].endsWith('.png');
 }
 
@@ -63,7 +63,8 @@ export function parseRunSummary(stdout: string): { rows: Record<string, number>;
 
 const running = new Set<string>();   // ponytail: one run per folder at a time, in-process only (single dev server)
 
-/** Run b_match.py then c_report.py for one data folder with the repo's venv python. Rejects while a run is in flight. */
+/** Run qr_decode.ts (cached per page, so only new pages cost time), then b_match.py and c_report.py for one data folder with the
+ *  repo's venv python. Rejects while a run is in flight. */
 export async function runPettyCash(repoRoot: string, folder: string): Promise<{ stdout: string; durationMs: number }> {
   if (running.has(folder)) throw new Error('A run is already in progress for this workspace');
   running.add(folder);
@@ -74,10 +75,23 @@ export async function runPettyCash(repoRoot: string, folder: string): Promise<{ 
     const run = promisify(execFile);
     const python = existsSync(join(repoRoot, '.venv/bin/python')) ? join(repoRoot, '.venv/bin/python') : 'python3';
     const dataArg = ['--data', folder];
+    // A first decode of a large pack takes minutes; the matcher reports a missing qr.json rather than guessing, so a failed decode is not fatal
+    await run('bun', [join(repoRoot, 'scripts/abujhd/qr_decode.ts'), ...dataArg], { cwd: repoRoot, timeout: 600_000, maxBuffer: 8 * 1024 * 1024 })
+      .catch(e => console.error('qr_decode failed:', (e as Error).message));
     const match = await run(python, [join(repoRoot, 'scripts/abujhd/b_match.py'), ...dataArg], { cwd: repoRoot, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 });
     await run(python, [join(repoRoot, 'scripts/abujhd/c_report.py'), ...dataArg], { cwd: repoRoot, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 });
     return { stdout: match.stdout, durationMs: Date.now() - started };
   } finally {
     running.delete(folder);
   }
+}
+
+export function readJsonFile<T>(file: string, fallback: T): T {
+  return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as T) : fallback;
+}
+
+/** Write beside, then rename: a reader never sees half a file. */
+export function writeJsonFile(file: string, value: unknown): void {
+  writeFileSync(`${file}.tmp`, JSON.stringify(value, null, 2) + '\n');
+  renameSync(`${file}.tmp`, file);
 }

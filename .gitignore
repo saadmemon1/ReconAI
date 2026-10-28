@@ -13,3 +13,5 @@ scripts/abujhd/__pycache__/
 /data/*.zip
 .venv/
 .superpowers/
+/data/second-iteration/
+/data/*/

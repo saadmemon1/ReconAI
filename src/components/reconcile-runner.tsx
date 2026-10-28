@@ -1,7 +1,10 @@
 'use client';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Card } from './ui/card';
+import { MoreHorizontal, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { setReportNav, useReportNav } from '@/lib/report-nav';
 import { ReportViewer } from './report-viewer';
 import { ReconciliationReport } from '@/engine/reconcile';
 import { getRunState, setRunState, subscribeRunState, EMPTY_RUN_STATE } from '@/lib/run-store';
@@ -279,7 +282,9 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
   // 'pending' until the probe answers: a Reconcile request that arrives before then waits, so a petty-cash
   // workspace is never sent down the generic pipeline by a race.
   const [pettyProbe, setPettyProbe] = useState<'pending' | 'yes' | 'no'>('pending');
-  const [showPettyCash, setShowPettyCash] = useState(false);
+  // The workflow on show is the sidebar's pick (lib/report-nav); the dashboard settles which one a workspace opens on.
+  const showPettyCash = useReportNav().workflow === 'petty_cash';
+  const setShowPettyCash = (on: boolean) => setReportNav(on ? { workflow: 'petty_cash' } : { workflow: 'documents' });
   const [pettyRun, setPettyRun] = useState<{ busy: boolean; note: string | null; error: string | null; version: number }>({ busy: false, note: null, error: null, version: 0 });
 
   // POST the matcher run (b_match.py + c_report.py); resolves to the summary line, rejects with the server's error.
@@ -357,29 +362,33 @@ export function ReconcileRunner({ kbId, reconcileRequest }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reconcileRequest, kbId, pettyProbe]);
 
+  // Re-running replaces the report on screen, so it lives in an overflow menu on the report's title row, away from an accidental click.
+  const pettyActions = (
+    <div className="flex items-center gap-2">
+      {pettyRun.busy && <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><RefreshCw className="size-3.5 animate-spin" /> Running…</span>}
+      {pettyRun.note && <span className="text-xs text-muted-foreground">{pettyRun.note}</span>}
+      {pettyRun.error && <span className="text-xs text-destructive">{pettyRun.error}</span>}
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="More actions" />}>
+          <MoreHorizontal />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72 p-1.5">
+          <DropdownMenuItem onClick={runPettyCash} disabled={pettyRun.busy} className="items-start gap-3 py-2">
+            <RefreshCw className="mt-0.5 size-4 shrink-0" />
+            <span className="flex flex-col">
+              <span className="font-medium">Re-run petty-cash reconciliation</span>
+              <span className="text-xs text-muted-foreground">Rebuilds the report from the files; the one on screen is replaced</span>
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-h3">Report</h2>
-        {pettyCashUrl && (
-          <div className="flex items-center gap-2">
-            {pettyRun.note && <span className="text-xs text-muted-foreground">{pettyRun.note}</span>}
-            {pettyRun.error && <span className="text-xs text-destructive">{pettyRun.error}</span>}
-            <Button size="sm" onClick={runPettyCash} disabled={pettyRun.busy} aria-busy={pettyRun.busy}>
-              {pettyRun.busy ? 'Running…' : 'Run petty-cash reconciliation'}
-            </Button>
-            <button
-              type="button"
-              onClick={() => setShowPettyCash(v => !v)}
-              className="rounded-md border border-border px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              {showPettyCash ? 'Back to reconciliation' : 'Petty-cash report'}
-            </button>
-          </div>
-        )}
-      </div>
       {showPettyCash && pettyCashUrl ? (
-        <PettyCashReport kbId={kbId} version={pettyRun.version} />
+        <PettyCashReport kbId={kbId} version={pettyRun.version} actions={pettyActions} onRerun={runPettyCash} rerunBusy={pettyRun.busy} />
       ) : (
         <>
 

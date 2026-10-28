@@ -67,13 +67,33 @@ def test_meta_and_page_list():
 
 def test_kpis():
     assert build()["kpis"] == {"card_spend": 350.0, "purchase_count": 2, "atm_count": 1, "purchases_amount": 150.0,
-                               "evidenced_amount": 100.0, "rollup": 300.0, "open_gap": -50.0, "missing_count": 1, "missing_amount": 50.0}
+                               "evidenced_amount": 100.0, "rollup": 300.0, "open_gap": -50.0, "missing_count": 1, "missing_amount": 50.0,
+                               "card_closing": 1.0, "ledger_closing": 2700.0, "gap": -2699.0, "inquiry_count": 0}
+
+
+def test_gap_uses_last_statement_row_and_last_ledger_row_of_month():
+    import copy
+    m = copy.deepcopy(MATCHES)
+    m["rows"][0].update(date="2026-09-30", time="08:19:00", balance=854.25)
+    m["ledger"][1]["balance"] = -1272.31   # ROLL, row 9: the month's last row in sheet order
+    m["ledger"][3].update(balance=3648.49, date="2026-09-01")   # X: earlier row, ignored
+    k = build_report(m, CFG, PAGES, now=datetime(2026, 10, 23))["kpis"]
+    assert (k["card_closing"], k["ledger_closing"], k["gap"]) == (854.25, -1272.31, 2126.56)
+
+
+def test_inquiries_leave_the_rows():
+    import copy
+    m = copy.deepcopy(MATCHES)
+    m["rows"].append(row("q1", 0.0, "inquiry", "INQUIRY", ledger=None))
+    r = build_report(m, CFG, PAGES, now=datetime(2026, 10, 23))
+    assert [x["ref"] for x in r["rows"]] == ["r1", "r2", "a1"] and r["kpis"]["inquiry_count"] == 1 and r["kpis"]["atm_count"] == 1
 
 
 def test_rows_are_trimmed_and_cite_without_file():
     rows = build()["rows"]
     r = rows[0]
-    assert set(r) == {"ref", "amount", "date", "time", "merchant", "kind", "orange", "status", "reason", "receipt_ids", "citations"}
+    assert set(r) == {"ref", "amount", "date", "time", "merchant", "kind", "orange", "status", "reason", "receipt_ids", "citations",
+                      "basis", "evidence", "paid", "invoiced", "difference", "rounding_rule"}
     assert r["citations"]["statement"] == {"page": 1, "ref": "r1", "y": 1.0, "orange": False, "crop": "crops/stmt-r1.png", "box": [0, 10, 1000, 15]}
     assert r["citations"]["receipts"][0]["group_id"] == "p1-g1" and "file" not in r["citations"]["receipts"][0]
     assert r["citations"]["ledger"]["cell"] == "B9" and "file" not in r["citations"]["ledger"]
@@ -92,10 +112,28 @@ def test_receipts_drop_bulk_and_fill_fields():
     assert review["amounts"] == [10.0, 20.0, 2.61] and review["review"] == [["r2", 6]]
 
 
+def test_card_number_read_from_the_slip():
+    from c_report import _card
+    assert _card("PURCHASE\n513213******6879\nAPPROVED") == {"first6": "513213", "last4": "6879"}
+    assert _card("Card: ***8679") == {"first6": None, "last4": "8679"}
+    assert _card("VAT No: 311676513300003 | INMA 777470004561 6412345678905104") is None   # VAT and terminal numbers are not cards
+    assert _card(None) is None
+    assert _card("*** thank you ***\n1289\nPurchase\n513213******6679") == {"first6": "513213", "last4": "6679"}   # not across lines
+    linked, _ = build()["receipts"]
+    assert linked["card"] is None   # the fixture's text shows no card
+
+
 def test_ledger_status_rule():
     lines = build()["ledger"]
     assert {l["code"]: l["status"] for l in lines} == {"TOP": "TIED", "ROLL": "ROLLUP", "OLD": None, "X": "NO_CARD_TXN"}
     assert set(lines[0]) == {"code", "date", "text", "debit", "credit", "balance", "month", "row", "cell", "status"}
+
+
+def test_display_section_passes_through_only_when_set():
+    assert "display" not in build()["meta"]
+    display = {"polished": True, "merchants": {"AJMY COMPANYALAHSAAL AHSASAU": "Ajmy Company · Al-Ahsa"}}
+    m = build_report(MATCHES, {**CFG, "display": display}, PAGES, now=datetime(2026, 10, 23))["meta"]
+    assert m["display"] == display
 
 
 def test_counts_and_tieout_pass_through():
@@ -108,3 +146,47 @@ if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
             fn(); print("ok", name)
+
+
+def test_vat_accepted_from_any_source_and_a_person_only_when_it_cannot_be_found():
+    from c_report import vat_status
+    qr = {"vat_no": "312452829200003", "vat": 91.5, "total": 701.5}
+    sv = {"no": "311069129600003", "source": "parsed"}
+    assert vat_status({"status": "LINKED", "qr": qr, "seller_vat": {"no": "312452829200003", "source": "qr"}})["status"] == "reclaimable"
+    assert vat_status({"status": "DUPLICATE", "qr": qr})["status"] == "excluded"
+    assert vat_status({"status": "LINKED", "slip_only": ["p42-g2"]})["status"] == "excluded"
+    assert vat_status({"status": "LINKED", "qr": {**qr, "vat_no": "", "vat": 0}})["status"] == "no_vat"
+    # read from the parsed invoice: accepted, and says so
+    v = vat_status({"status": "LINKED", "fields": {"total": 11.5, "vat": 1.5}, "vat_check": {"status": "ok"}, "seller_vat": sv})
+    assert v["status"] == "reclaimable" and v["source"] == "parsed" and v["amount"] == 1.5 and "read from the invoice" in v["why"]
+    # the seller's number carried from the same vendor's invoice: accepted, citing it
+    c = vat_status({"status": "LINKED", "fields": {"total": 115.0, "vat": 15.0}, "seller_vat": {"no": "300188493310003", "source": "vendor", "from": ["p67-g1"]}})
+    assert c["status"] == "reclaimable" and "p67-g1" in c["why"]
+    # no VAT figure on the receipt: none claimed, no person needed, never calculated
+    n = vat_status({"status": "LINKED", "fields": {"total": 115.0}, "seller_vat": sv})
+    assert n["status"] == "no_vat" and n["amount"] == 0 and "none is claimed" in n["why"]
+    assert vat_status({"status": "LINKED", "fields": {}, "amounts": [{"value": 35.0}], "seller_vat": sv})["status"] == "no_vat"
+    # a person only when it cannot be found, or the sources disagree
+    assert vat_status({"status": "LINKED", "fields": {"total": 11.5, "vat": 1.5}, "seller_vat": {"no": None, "source": None}})["status"] == "not_verified"
+    assert vat_status({"status": "LINKED", "fields": {}, "seller_vat": sv})["status"] == "not_verified"
+    bad = vat_status({"status": "LINKED", "fields": {"total": 16.0, "vat": 2.21}, "vat_check": {"status": "mismatch", "total": 16.0, "vat": 2.21, "expected": 2.09}, "seller_vat": sv})
+    assert bad["status"] == "check" and "does not add up" in bad["why"]
+    clash = vat_status({"status": "LINKED", "fields": {"total": 11.5, "vat": 1.6}, "qr": {**qr, "vat": 1.5}, "seller_vat": sv})
+    assert clash["status"] == "check" and "QR code says 1.50" in clash["why"]
+    gone = vat_status({"status": "REVIEW", "fields": {}, "unreadable": "too faded"})
+    assert gone["status"] == "not_verified" and "a person must read" in gone["why"]
+    person = vat_status({"status": "LINKED", "fields": {"total": 218.5, "vat": 28.5}, "override": {"by": "Reviewer (app)", "fields": ["total", "vat"]}, "seller_vat": sv})
+    assert person["source"] == "person" and "entered by Reviewer (app)" in person["why"]
+
+
+
+def test_vat_the_ai_read_off_the_page_is_said_so_and_two_vat_numbers_go_to_a_person():
+    from c_report import vat_status
+    sv = {"no": "300312419500003", "source": "parsed"}
+    ai = {"by": "Claude (AI assistant)", "proposed": True, "fields": ["total", "vat"]}
+    v = vat_status({"status": "ORPHAN", "fields": {"total": 460.0, "vat": 60.0}, "vat_check": {"status": "ok"}, "override": ai, "seller_vat": sv})
+    assert v["status"] == "reclaimable" and v["source"] == "ai_page" and "read off the page image by ReconAI" in v["why"] and "read from the invoice" not in v["why"]
+    # the parser and the page check read different seller VAT numbers: neither is chosen
+    two = vat_status({"status": "ORPHAN", "fields": {"total": 460.0, "vat": 60.0}, "vat_check": {"status": "ok"}, "override": ai, "seller_vat": sv,
+                      "vat_no_candidate": "300638495500003", "vat_no_candidate_by": {"by": "Claude (AI assistant)"}})
+    assert two["status"] == "not_verified" and "300312419500003" in two["why"] and "300638495500003" in two["why"]

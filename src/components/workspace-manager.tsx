@@ -3,14 +3,9 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './auth-provider';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Trash2 } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from './ui/select';
+import { Check, ChevronsUpDown, FolderOpen, Plus, Trash2 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from './ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -77,43 +72,48 @@ export function WorkspaceManager({ selectedKB, onSelect }: {
 
   const selectedName = kbs.find(k => k.id === selectedKB)?.name;
 
+  // The workspace picker sits at the top of the sidebar; creating and deleting live in its menu, so the page itself carries no
+  // workspace controls (and no delete button next to the report).
   return (
-    <div className="flex items-center gap-3">
-      <Select value={selectedKB} onValueChange={v => onSelect(v)}>
-        <SelectTrigger className="w-64">
-          <SelectValue>{selectedName || 'Select a workspace'}</SelectValue>
-        </SelectTrigger>
-        <SelectContent side="bottom" align="start" sideOffset={6} alignItemWithTrigger={false}>
-          {kbs.length === 0 && (
-            <p className="px-3 py-2 text-sm text-muted-foreground">No workspaces yet.</p>
-          )}
-          {kbs.map(kb => (
-            <SelectItem key={kb.id} value={kb.id}>
-              {kb.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      {selectedKB && (
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Delete workspace"
-          title="Delete workspace"
-          className="w-9 h-9 text-destructive"
-          onClick={() => {
-            const target = kbs.find(k => k.id === selectedKB);
-            if (target) setDeleteTarget(target);
-          }}
+    <div>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className="group flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <Trash2 className="w-4 h-4" />
-        </Button>
-      )}
-
-      <Button onClick={() => setCreateOpen(true)}>
-        New Workspace
-      </Button>
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-semibold">
+            {(selectedName ?? '?').slice(0, 2).toUpperCase()}
+          </span>
+          {/* the icon-only rail on narrow screens keeps just the initials */}
+          <span className="hidden min-w-0 flex-1 flex-col md:flex">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Workspace</span>
+            <span className="truncate text-sm font-semibold">{selectedName || 'Select a workspace'}</span>
+          </span>
+          <ChevronsUpDown className="hidden size-4 shrink-0 text-muted-foreground md:block" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-64 p-1.5">
+          <div className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Workspaces</div>
+          {kbs.length === 0 && <p className="px-2 py-2 text-sm text-muted-foreground">No workspaces yet.</p>}
+          {kbs.map(kb => (
+            <DropdownMenuItem key={kb.id} onClick={() => onSelect(kb.id)} className="gap-2">
+              <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+              <span className="flex-1 truncate">{kb.name}</span>
+              <Check className={cn('size-4 shrink-0 text-primary', kb.id !== selectedKB && 'invisible')} />
+            </DropdownMenuItem>
+          ))}
+          <div className="my-1.5 border-t border-border" />
+          <DropdownMenuItem onClick={() => setCreateOpen(true)} className="gap-2">
+            <Plus className="size-4 shrink-0" /> New workspace
+          </DropdownMenuItem>
+          {selectedKB && (
+            <DropdownMenuItem
+              onClick={() => { const target = kbs.find(k => k.id === selectedKB); if (target) setDeleteTarget(target); }}
+              className="gap-2 text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
+            >
+              <Trash2 className="size-4 shrink-0" /> Delete this workspace…
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Delete confirmation */}
       <Dialog open={deleteTarget !== null} onOpenChange={o => !o && setDeleteTarget(null)}>

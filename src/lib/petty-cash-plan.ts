@@ -5,6 +5,7 @@ import type { Task } from '@/components/ui/agent-plan';
 
 export const PETTY_CASH_STEPS = [
   { id: 'petty-read', title: 'Reading the statement, receipts and ledger' },
+  { id: 'petty-qr', title: 'Decoding the invoices’ ZATCA QR codes' },
   { id: 'petty-match', title: 'Matching receipts to card rows' },
   { id: 'petty-tieout', title: 'Tying out the ledger' },
   { id: 'petty-report', title: 'Building the report' },

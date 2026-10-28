@@ -61,9 +61,22 @@ def ensure_raw():
             path.write_bytes(r.content)
 
 
-_AR = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+# Work done by an AI model (a page check, a proposal) is shown under the product's name only, never the model's: which model the client has
+# approved is configuration, not something a report or a reviewer sees
+AI_AUTHOR = "ReconAI"
+def is_ai_author(by):
+    return bool(by) and (by == AI_AUTHOR or "(AI" in by)
+
+def author_name(by):
+    return AI_AUTHOR if is_ai_author(by) else by
+
+
+_AR = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹٫٬", "01234567890123456789.,")
+# Arabic invoices print amounts in Arabic-Indic digits with a comma for the decimal point (٤٦٠,٠٠ is 460.00): only there, never in ASCII
+# amounts where the comma separates thousands
+_AR_DECIMAL = re.compile(r"([٠-٩۰-۹]+)[,،]([٠-٩۰-۹]{2})(?![٠-٩۰-۹])")
 def ascii_digits(s):
-    return s.translate(_AR)
+    return _AR_DECIMAL.sub(r"\1.\2", s).translate(_AR)
 
 
 def norm_text(s):

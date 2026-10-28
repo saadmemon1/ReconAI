@@ -4,6 +4,10 @@ import { CreditDisplay } from './credit-display';
 import { WorkspaceManager } from './workspace-manager';
 import { FileManager } from './file-manager';
 import { ReconcileRunner } from './reconcile-runner';
+import { ReportSidebar } from './report-sidebar';
+import { WorkflowSwitcher } from './workflow-switcher';
+import { INITIAL_NAV, setReportNav, useReportNav } from '@/lib/report-nav';
+import { getRunState } from '@/lib/run-store';
 import { Button } from './ui/button';
 import {
   DropdownMenu,
@@ -20,8 +24,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from './ui/dialog';
-import { LogOut, FileText, FileBarChart, Coins, KeyRound, Sun, Moon } from 'lucide-react';
-import { useState, type CSSProperties } from 'react';
+import { LogOut, FileText, Coins, KeyRound, Sun, Moon } from 'lucide-react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { useTheme } from 'next-themes';
 import { BrandLogo } from './brand-logo';
 import { cn } from '@/lib/utils';
@@ -43,6 +47,25 @@ export function Dashboard() {
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [reconcileRequest, setReconcileRequest] = useState<ReconcileRequest | null>(null);
 
+  const reportNav = useReportNav();
+  const openReport = () => { setReconcileRequest(null); setTab('report'); };
+
+  // Which workflow a workspace opens on is settled here, once per workspace, so the sidebar names it from the first page:
+  // petty cash when the workspace has a petty-cash report and no document reconciliation of its own.
+  useEffect(() => {
+    setReportNav(INITIAL_NAV);
+    if (!selectedKB) return;
+    let cancelled = false;
+    fetch(`/api/petty-cash/${selectedKB}/report.json`, { method: 'HEAD' })
+      .then(r => {
+        if (cancelled) return;
+        const run = getRunState(selectedKB);
+        setReportNav({ pettyCash: r.ok, ...(r.ok && !run.report && !run.running ? { workflow: 'petty_cash' as const } : {}) });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedKB]);
+
   const handleReconcile = (fileIds: string[], modelId: string) => {
     setReconcileRequest({ fileIds, modelId, nonce: Date.now() });
     setTab('report');
@@ -62,28 +85,44 @@ export function Dashboard() {
           <BrandLogo className="hidden md:block" />
           <span className="hidden text-[11px] font-medium uppercase tracking-wide text-muted-foreground md:inline">ReconAI</span>
         </div>
+        {/* The workspace picker heads the sidebar, as an account switcher does; its menu holds create and delete. */}
+        <div className="border-b border-sidebar-border px-2 pb-3 pt-4 md:pt-2">
+          <WorkspaceManager
+            key={wsRefreshKey}
+            selectedKB={selectedKB}
+            onSelect={(id) => {
+              setReconcileRequest(null); // workspace switch: don't re-run a stale request
+              setSelectedKB(id);
+            }}
+          />
+        </div>
         {selectedKB && (
-          <nav className="flex flex-col gap-1 px-2 pt-4 md:px-3" aria-label="Sections">
-            {([
-              { key: 'files', label: 'Files', Icon: FileText },
-              { key: 'report', label: 'Report', Icon: FileBarChart },
-            ] as const).map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                type="button"
-                aria-label={label}
-                title={label}
-                aria-current={tab === key ? 'page' : undefined}
-                onClick={() => { if (key === 'report') setReconcileRequest(null); setTab(key); }}
-                className={cn(
-                  'flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium transition-colors',
-                  tab === key ? 'bg-primary text-primary-foreground' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                )}
-              >
-                <Icon className="size-4 shrink-0" />
-                <span className="hidden md:inline">{label}</span>
-              </button>
-            ))}
+          <nav className="flex flex-col gap-0.5 px-2 pt-4 md:px-3" aria-label="Sections">
+            <button
+              type="button"
+              aria-label="Files"
+              title="Files"
+              aria-current={tab === 'files' ? 'page' : undefined}
+              onClick={() => setTab('files')}
+              className={cn(
+                'flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-medium transition-colors',
+                tab === 'files'
+                  ? 'bg-card text-foreground shadow-sm ring-1 ring-border [&_svg]:text-primary'
+                  : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground'
+              )}
+            >
+              <FileText className="size-4 shrink-0" />
+              <span className="hidden md:inline">Files</span>
+            </button>
+            {/* the report entry is named after its workflow ("Petty cash"); its sections open beneath it */}
+            <WorkflowSwitcher
+              value={reportNav.workflow}
+              pettyCash={reportNav.pettyCash}
+              active={tab === 'report'}
+              onOpen={openReport}
+              onChange={workflow => { setReportNav({ workflow, section: 'overview' }); openReport(); }}
+            />
+            {tab === 'report' && <ReportSidebar />}
           </nav>
         )}
 
@@ -173,17 +212,6 @@ export function Dashboard() {
             desktop; the old max-w-6xl left a big empty right margin when the
             preview was open (user: "padding on a global level") */}
         <div className="mx-auto w-full max-w-[1600px] px-6 py-6">
-          {/* Workspace Selection */}
-          <section className="mb-8">
-            <WorkspaceManager 
-              key={wsRefreshKey}
-              selectedKB={selectedKB} 
-              onSelect={(id) => {
-                setReconcileRequest(null); // workspace switch: don't re-run a stale request
-                setSelectedKB(id);
-              }} 
-            />
-          </section>
 
           {selectedKB && (
             <>

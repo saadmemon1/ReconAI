@@ -30,8 +30,8 @@ def test_scoring_and_greedy():
     assert links["g1"] == "r1" and links["g2"] == "r2" and links["g4"] is None
     assert "g3" in review and {r for r, _ in review["g3"]} == {"r3", "r4"} and links["g3"] is None
     assert "g5" in review
-    links2, _ = match_receipts([exact, near, tie_a, orphan, weak], ROWS, {"links": {"g3": "r4", "g1": None}})
-    assert links2["g3"] == "r4" and links2["g1"] is None
+    links2, _ = match_receipts([exact, near, tie_a, orphan, weak], ROWS, {"links": {"g3": "r4", "g1": {"ref": None, "by": "Reviewer (app)"}}})
+    assert links2["g3"] == "r4" and links2["g1"] is None   # a named person's "no card payment" is kept
 
 def test_collapse_and_amounts():
     inv = G("g1", 2, [218.5, 190.0], ["2026-09-01"], "Al-Fares", kind="invoice")
@@ -90,7 +90,8 @@ def test_tieout_and_statuses():
     assert t["row_status"]["l1"] == "TIED" and t["row_ledger"]["l1"] == "MISC/2026/09/0020"
     rows, receipts = assign_statuses(stmt, groups, {"g1": "p1", "g2": None, "g3": None}, {"g3": [("p2", 3)]}, t, ledger)
     st = {r["ref"]: r["status"] for r in rows}
-    assert st == {"p1": "MATCHED", "p2": "REVIEW", "a1": "UNEXPLAINED", "l1": "TIED"}, st
+    assert st == {"p1": "MATCHED", "p2": "REVIEW", "a1": "ATM_CASH", "l1": "TIED"}, st   # no withdrawal line: cash spent on receipts in the roll-up
+    assert {r["ref"]: r["citations"]["ledger"] for r in rows}["a1"]["code"] == "MISC/2026/09/0031"
     assert {r["ref"]: r.get("ledger_code") for r in rows}["l1"] == t["row_ledger"]["l1"] == "MISC/2026/09/0020"
     rc = {r["id"]: r["status"] for r in receipts}
     assert rc == {"g1": "LINKED", "g2": "ORPHAN", "g3": "REVIEW"}
@@ -101,6 +102,35 @@ def test_tieout_and_statuses():
     rows2, _ = assign_statuses(stmt, groups, {"g1": "p1", "g2": None, "g3": None}, {"g3": [("p2", 3)]}, t2, ledger + [wd])
     assert {r["ref"]: r["status"] for r in rows2}["a1"] == "TIED"
 
+def test_inquiries_are_not_withdrawals():
+    from b_match import tag_inquiries
+    stmt = [R("a1", 500.0, "2026-09-03", "BANKX", kind="atm"), R("q1", 0.0, "2026-09-03", "BANKX", kind="atm"), R("q2", 0.0, "2026-09-04", "BANKY", kind="atm")]
+    stmt[0]["txn_code"] = "1"; stmt[1]["txn_code"] = "30"; stmt[2]["txn_code"] = "35"
+    tag_inquiries(stmt)
+    assert [r["kind"] for r in stmt] == ["atm", "inquiry", "inquiry"]
+    ledger = [{"code": "MISC/2026/09/0031", "date": "2026-09-30", "text": "Petty Cash for SEP", "debit": None, "credit": 1600.0, "month": "2026-09", "sheet": "GL", "row": 83, "cell": "B83"}]
+    t = tie_out_ledger(stmt, ledger)
+    assert t["atm_vs_withdrawals"]["statement"] == 500.0
+    rows, _ = assign_statuses(stmt, [], {}, {}, t, ledger)
+    assert {r["ref"]: r["status"] for r in rows} == {"a1": "ATM_CASH", "q1": "INQUIRY", "q2": "INQUIRY"}
+
+def test_receipt_overrides():
+    from b_match import apply_receipt_overrides
+    recs = [{"id": "a", "status": "ORPHAN", "reason": "r", "review": []}, {"id": "b", "status": "REVIEW", "reason": "r", "review": [["x", 3]]},
+            {"id": "c", "status": "LINKED", "reason": "linked", "review": []}, {"id": "d", "status": "ORPHAN", "reason": "r", "review": []}]
+    recs += [{"id": "e", "status": "ORPHAN", "reason": "r", "review": []}, {"id": "f", "status": "ORPHAN", "reason": "r", "review": []}]
+    ov = {"receipts": {"a": {"status": "CASH", "reason": "Paid in cash", "by": "Saad"}, "b": {"status": "PART", "part_of": "c"},
+                       "c": {"status": "CASH"}, "d": {"status": "NONSENSE"}, "e": {"status": "OTHER_CARD", "reason": "slip"},
+                       "f": {"status": "CASH", "by": "Claude (AI assistant)", "proposed": True, "reason": "change given"}}}
+    out = {g["id"]: g for g in apply_receipt_overrides(recs, ov)}
+    assert out["a"]["status"] == "CASH" and out["a"]["reason"] == "Paid in cash" and out["a"]["decided_by"]["by"] == "Saad"
+    # a payment verdict with no author waits for a person: not applied, carried as a proposal
+    assert out["e"]["status"] == "ORPHAN" and out["e"]["proposal"]["status"] == "OTHER_CARD" and out["e"]["proposal"]["by"] is None
+    # a classification ReconAI made from the receipt counts in Payments, labelled as its own; a person can change it
+    assert out["f"]["status"] == "CASH" and out["f"]["decided_by"]["by"] == "ReconAI" and "proposal" not in out["f"]   # shown under the product name, never the model's
+    assert out["b"]["status"] == "PART" and out["b"]["part_of"] == "c" and out["b"]["review"] == []
+    assert out["c"]["status"] == "LINKED" and out["d"]["status"] == "ORPHAN"   # linked never overridden; unknown status ignored
+
 def test_citations():
     stmt = [R("p1", 41.0, "2026-09-01", "MAZA"), R("p2", 9.0, "2026-09-02", "ASDAF"), R("a1", 500.0, "2026-09-03", "BANKX", kind="atm"), R("l1", 3000.0, "2026-09-01", "FROM", kind="load")]
     for r in stmt: r.update(orange=False, y=100.0, crop=f"crops/stmt-{r['ref']}.png", box=[0, 118, 1000, 123])
@@ -110,12 +140,12 @@ def test_citations():
     g1 = G("g1", 7, [41.0], ["2026-09-01"], "MAZA"); g1["box"] = [10, 20, 300, 400]
     rows, receipts = assign_statuses(stmt, [g1], {"g1": "p1"}, {}, t, ledger)
     by = {r["ref"]: r["citations"] for r in rows}
-    assert {r["ref"]: r["status"] for r in rows} == {"p1": "MATCHED", "p2": "MISSING_RECEIPT", "a1": "UNEXPLAINED", "l1": "TIED"}
+    assert {r["ref"]: r["status"] for r in rows} == {"p1": "MATCHED", "p2": "MISSING_RECEIPT", "a1": "ATM_CASH", "l1": "TIED"}
     led = by["p1"]["ledger"]
     assert led["code"] == "MISC/2026/09/0031" and led["relation"] == "rolled-up" and led["cell"] == "B83" and led["amount"] == 1600.0
     assert len(by["p1"]["receipts"]) == 1 and by["p1"]["receipts"][0]["crop"] == "crops/g1.png" and by["p1"]["receipts"][0]["page"] == 7
     assert by["l1"]["ledger"]["relation"] == "tied" and by["l1"]["ledger"]["code"] == "MISC/2026/09/0020" and by["l1"]["ledger"]["cell"] == "B74"
-    assert by["a1"]["ledger"] is None
+    assert by["a1"]["ledger"]["relation"] == "rolled-up" and by["a1"]["ledger"]["code"] == "MISC/2026/09/0031"   # ATM cash sits inside the roll-up
     assert by["p2"]["receipts"] == [] and by["p2"]["statement"]["page"] == 1 and by["p2"]["statement"]["crop"] == "crops/stmt-p2.png"
     assert by["p2"]["ledger"]["relation"] == "rolled-up"   # a MISSING purchase is still inside the month's roll-up
     assert receipts[0]["citations"]["statement"]["ref"] == "p1" and receipts[0]["citations"]["ledger"]["cell"] == "B83"
@@ -157,7 +187,8 @@ def test_fragments_and_tolerance():
     ok, bad = G("o1", 1, [10.01], ["2026-09-03"], "Ajmi"), G("o2", 2, [10.1], [], "zzz")
     links, rev = match_receipts([ok], stmt, {})
     rows, _ = assign_statuses(stmt, [ok], links, rev, tie_out_ledger(stmt, []), [])
-    assert rows[0]["status"] == "MATCHED" and "differs by 0.01" in rows[0]["reason"], rows
+    assert rows[0]["status"] == "AMOUNT_MISMATCH" and "differs by 0.01" in rows[0]["reason"], rows   # a halala apart is a proposal, never MATCHED
+    assert rows[0]["paid"] == 10.0 and rows[0]["invoiced"] == 10.01 and rows[0]["difference"] == -0.01
     links, rev = match_receipts([bad], stmt, {"links": {"o2": "s1"}})
     rows, _ = assign_statuses(stmt, [bad], links, rev, tie_out_ledger(stmt, []), [])
     assert rows[0]["status"] == "AMOUNT_MISMATCH", rows
@@ -566,7 +597,7 @@ def test_unpriced_dated_piece_of_a_single_receipt_page_dates_its_record():
     # p87: an online invoice printed as blocks; only the totals block (p87-g1 with g2/g5) has an amount, the date sits alone on p87-g3
     tot = G("tot", 87, [194.01], [], "مركز المعرفة العلمية للتدريب", kind="other", fields={"merchant": "مركز المعرفة العلمية للتدريب", "date": None, "total": 194.01})
     day = G("day", 87, [], ["2026-09-23"], "تاريخ الطلب: Wednesday 23 September", kind="other", fields={"merchant": None, "date": "2026-09-23", "time": "01:25 PM", "total": None})
-    cust = G("cust", 87, [], [], "MAKEEN INDUSTRIAL COMPANY", kind="other", fields={"merchant": "MAKEEN INDUSTRIAL COMPANY", "date": None, "total": None})
+    cust = G("cust", 87, [], [], "ACME INDUSTRIAL COMPANY", kind="other", fields={"merchant": "ACME INDUSTRIAL COMPANY", "date": None, "total": None})
     for g in (tot, day, cust): g["ids"] = [g["id"]]; g["boxes"] = [(87, None)]
     out = collapse_fragments([day, cust, tot])                    # order-independent: the date block comes first here
     rec = next(o for o in out if "tot" in o["ids"])
@@ -608,3 +639,146 @@ if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):
             fn(); print("ok", name)
+
+
+def test_qr_attach_and_abstain():
+    from b_match import attach_qr, gate_amounts, amount_source
+    inv = G("q1", 3, [700.0, 91.5], ["2026-09-06"], "ALWAN PAINT", fields={"total": 700.0}); inv["ids"] = ["q1"]; inv["boxes"] = [(3, [0, 0, 1000, 500])]
+    other = G("q2", 3, [12.0], ["2026-09-06"], "OTHER"); other["ids"] = ["q2"]; other["boxes"] = [(3, [0, 600, 1000, 900])]
+    qr = {"pages": {"page-03.png": {"width": 1000, "height": 1000, "codes": [
+        {"box": [100, 100, 200, 200], "zatca": {"seller": "Alwan", "vat_no": "312452829200003", "time": "t", "total": 701.5, "vat": 91.5}},
+        {"box": [100, 950, 200, 990], "zatca": {"seller": "Nobody", "vat_no": "", "time": "t", "total": 5.0, "vat": 0}}]}}}
+    inv["confidence"] = 0.5   # too weak to use: the QR fills the total
+    loose = attach_qr([inv, other], qr)
+    # the code inside the invoice's crop fills a total the parsed read could not be trusted for; a code nobody explains stays loose
+    assert inv["fields"]["total"] == 701.5 and receipt_amounts(inv) == {701.5} and inv["qr_fills"] == {"read": 700.0} and "qr_conflict" not in inv
+    assert [l["zatca"]["total"] for l in loose] == [5.0] and "qr" not in other
+    weak = G("w1", 4, [30.2], ["2026-09-08"], "Othaim", fields={"total": 30.2}); weak["confidence"] = 0.42
+    strong = G("w2", 4, [12.0], ["2026-09-08"], "Othaim", fields={"total": 12.0}); strong["confidence"] = 0.9
+    marked = G("w3", 4, [52.5], ["2026-09-08"], "Cafe", fields={"total": 52.5}); marked["confidence"] = 0.9
+    marked["unreadable_by"] = {"by": "Saad", "reason": "handwritten", "at": None, "proposed": False}
+    gate_amounts([weak, strong, marked, inv])
+    assert receipt_amounts(weak) == set() and weak["withheld_amounts"] == [30.2] and "0.42" in weak["unreadable"]
+    assert receipt_amounts(strong) == {12.0} and amount_source(strong) == "ai" and amount_source(inv) == "qr"
+    assert receipt_amounts(marked) == set() and "by Saad" in marked["unreadable"]
+    assert score(weak, R("x", 30.98, "2026-09-08", "AL OTHAIM MARKETS")) == 0   # a withheld amount is never matched
+
+
+def test_slip_reference_links():
+    from b_match import LINK_HOW
+    rows = [R("624910165282", 10.0, "2026-09-06", "ALWAN"), R("x2", 11.5, "2026-09-06", "ALWAN")]
+    g = G("s1", 20, [11.5], ["2026-09-06"], "Alwan Paint"); g["printed_refs"] = ["624910165282", "999999999999"]
+    links, review = match_receipts([g], rows, {})
+    # the stapled slip prints the payment's reference: linked to that payment even though another row has the invoice's exact amount
+    assert links["s1"] == "624910165282" and LINK_HOW["s1"]["rule"] == "slip_ref"
+    rows2, _ = assign_statuses(rows, [g], links, review, tie_out_ledger(rows, []), [])
+    assert rows2[0]["status"] == "AMOUNT_MISMATCH" and rows2[0]["difference"] == -1.5
+
+
+def test_parsed_first_then_qr():
+    from b_match import _apply_qr, amount_source, gate_amounts, vat_check
+    z = {"seller": "S", "vat_no": "300000000000003", "time": "t", "total": 218.5, "vat": 28.5}
+    same = G("a", 3, [218.5], ["2026-09-01"], "Fares", fields={"total": 218.5}); same["confidence"] = 0.95
+    _apply_qr(same, z, {"page": 3}); gate_amounts([same])
+    assert same.get("qr_confirms") and amount_source(same) == "ai_qr" and same["fields"]["vat"] == 28.5   # QR confirms, and adds the VAT it carries
+    differ = G("b", 3, [281.5], ["2026-09-01"], "Fares", fields={"total": 281.5}); differ["confidence"] = 0.95
+    _apply_qr(differ, z, {"page": 3}); gate_amounts([differ])
+    # a confident parsed read and the QR disagree: neither is used, a person checks
+    assert differ["qr_conflict"]["kept"] == "none" and receipt_amounts(differ) == set() and "a person must check" in differ["unreadable"]
+    assert vat_check({"fields": {"total": 218.5, "vat": 28.5}})["status"] == "ok"
+    assert vat_check({"fields": {"total": 16.0, "vat": 2.21}}) == {"status": "mismatch", "total": 16.0, "vat": 2.21, "expected": 2.09}
+    assert vat_check({"fields": {"total": 280.0, "vat": 0}})["status"] == "zero" and vat_check({"fields": {"total": 10.0}})["status"] == "missing"
+
+
+def test_rounding_rule_only_when_a_person_set_it():
+    import b_match
+    from b_match import rules_of
+    assert rules_of({"rules": {"rounding": {"max": 0.99, "applies": "card_less"}}}) == {}          # no author: not a rule
+    rows = [R("r1", 313.0, "2026-09-06", "ALWAN"), R("r2", 23.0, "2026-09-06", "ALWAN")]
+    gs = [G("g1", 19, [313.95], ["2026-09-06"], "Alwan", fields={"total": 313.95}), G("g2", 76, [21.0], ["2026-09-06"], "Alwan", fields={"total": 21.0})]
+    b_match.RULES.clear(); b_match.RULES.update(rules_of({"rules": {"rounding": {"max": 0.99, "applies": "card_less", "by": "Saad", "at": "t"}}}))
+    try:
+        out, _ = assign_statuses(rows, gs, {"g1": "r1", "g2": "r2"}, {}, tie_out_ledger(rows, []), [])
+    finally:
+        b_match.RULES.clear()
+    # 0.95 below the invoice: inside the rule, still AMOUNT_MISMATCH but accepted by it; 2.00 above the invoice: a person decides
+    assert out[0]["status"] == "AMOUNT_MISMATCH" and out[0]["rounding_rule"]["by"] == "Saad" and b_match.basis(out[0]["status"], out[0]) == "rule"
+    assert not out[1].get("rounding_rule") and b_match.basis(out[1]["status"], out[1]) == "proposed"
+
+
+def test_vendor_vat_number_carried_and_misreads_named():
+    import b_match
+    from b_match import vendor_vat_numbers
+    rows = {"t1": {"merchant": "MASDAR TECHNICAL SUPPLIES"}, "t2": {"merchant": "MASDAR TECHNICAL SUPPLIES"}, "t3": {"merchant": "SHARED TERMINAL"}}
+    def rec(id, no, refs, src="parsed", merchant="Masdar Technical Supplies", text=""):
+        b_match.TEXT_OF[id] = text or (no or "")
+        return {"id": id, "ids": [id], "refs": refs, "fields": {"merchant": merchant}, "seller_vat": {"no": no, "source": src if no else None}}
+    b_match.TEXT_OF.clear(); b_match.BUYER_VAT[0] = "311676513300003"
+    a = rec("a", "300188493310003", ["t1"]); b = rec("b", "300188493310003", [], merchant="Masdar Technical Supplies")
+    c = rec("c", None, ["t2"]); d = rec("d", "300184933130003", [], merchant="Masdar Technical Supplies")
+    x = rec("x", "300689074500003", ["t3"], merchant="Al-Munhali"); y = rec("y", "310231837700003", ["t3"], merchant="Modern Distribution")
+    z = rec("z", None, ["t3"], merchant="Somebody")
+    vendor_vat_numbers([a, b, c, d, x, y, z], rows)
+    # same terminal / same name: the number read most often is lent, and a one-off variant a few digits off is named a misread
+    assert c["seller_vat"]["no"] == "300188493310003" and c["seller_vat"]["source"] == "vendor"
+    assert d["seller_vat"] == {**d["seller_vat"], "no": "300188493310003", "read_as": "300184933130003"}
+    # a terminal shared by two sellers with different numbers lends nothing
+    assert z["seller_vat"]["no"] is None
+
+
+def test_printed_vat_found_on_any_piece_of_the_invoice():
+    import b_match
+    b_match.TEXT_OF.clear(); b_match.AMOUNTS_OF.clear()
+    b_match.TEXT_OF["a"] = "Net Invoice 839.5"; b_match.AMOUNTS_OF["a"] = [839.5]; b_match.AMOUNTS_OF["b"] = []
+    b_match.TEXT_OF["frag"] = "VAT Amount 109.5"   # a fragment's text, joined to its document by main()
+    g = {"id": "a", "ids": ["a", "frag"], "fields": {"total": 839.5}, "amounts": [{"value": 839.5}]}
+    assert b_match.printed_vat(g) == 109.5           # one decimal, as Alwan prints it
+    h = {"id": "b", "ids": ["b"], "fields": {"total": 280.0}, "amounts": [{"value": 280.0}]}
+    b_match.TEXT_OF["b"] = "Total 280.00"
+    assert b_match.printed_vat(h) is None             # nothing printed: no VAT is invented
+
+
+def test_vat_label_without_digits_is_named():
+    import b_match
+    b_match.TEXT_OF.clear()
+    b_match.TEXT_OF["s"] = "1520 018535 6.05 626316434837\nالرقم الضريبي\nمؤسسة علي محمد السبيتي التجارية"   # p60: the digits were dropped
+    b_match.TEXT_OF["t"] = "الرقم الضريبي: ٣٠٠٤٧٠٢٣٦٧٠٠٠٠٣"                                                   # printed and captured
+    b_match.TEXT_OF["u"] = "الرقم الضريبي للعميل"                                                                   # the buyer's label: not the seller's
+    assert b_match.vat_label_without_digits({"id": "s"}) is True
+    assert b_match.vat_label_without_digits({"id": "t"}) is False and b_match.labelled_vat_number({"id": "t"}) == "300470236700003"
+    assert b_match.vat_label_without_digits({"id": "u"}) is False
+
+
+def test_arabic_indic_amounts_with_a_decimal_comma():
+    from common import ascii_digits, find_amounts
+    assert find_amounts("المبلغ المطلوب ٤٦٠,٠٠ مبلغ الضريبة ٦٠,٠٠") == [460.0, 60.0]   # p84: the comma is the decimal point
+    assert find_amounts("﷼ ١٦٨٫٧٠") == [168.7]                                           # the Arabic decimal separator
+    assert find_amounts("Total 1,234.50") == [1234.5]                                    # an ASCII thousands comma is unchanged
+    assert ascii_digits("٢٨٠٨٠٢٠٢") == "28080202"
+
+
+def test_an_unsigned_no_link_does_not_block_the_matcher():
+    g = G("g1", 64, [16.0], ["2026-09-20"], "ASDAF ALMUHIT")
+    rows = [R("r16", 16.0, "2026-09-20", "ASDAF ALMUHITAl Oyoun")]
+    links, _ = match_receipts([g], rows, {"links": {"g1": None}})                              # no author: ignored
+    assert links["g1"] == "r16"
+    links, _ = match_receipts([g], rows, {"links": {"g1": {"ref": None, "by": "Reviewer (app)"}}})   # a named person: kept
+    assert links["g1"] is None
+
+
+def test_merging_pieces_keeps_a_total_already_set():
+    # p84: the piece holding the page check's 460 / VAT 60 has no merchant field; the header piece names the shop
+    head = G("a", 84, [460.0], ["2026-09-28"], "Al-Motawaa Transportation", kind="invoice", fields={"merchant": None, "total": 460.0, "vat": 60.0})
+    piece = G("b", 84, [460.0], ["2026-09-28"], "Al-Motawaa Transportation", kind="invoice", fields={"merchant": "Al-Motawaa Transportation", "total": None, "vat": None})
+    for g in (head, piece): g["ids"] = [g["id"]]; g["boxes"] = [(84, None)]
+    out = collapse_fragments([head, piece])
+    assert len(out) == 1
+    f = out[0]["fields"]
+    assert f["total"] == 460.0 and f["vat"] == 60.0 and f["merchant"] == "Al-Motawaa Transportation"
+
+
+def test_an_ai_author_is_shown_as_reconai_only():
+    from common import author_name, is_ai_author
+    assert author_name("Claude (AI assistant)") == "ReconAI" and author_name("GPT (AI check)") == "ReconAI" and author_name("ReconAI") == "ReconAI"
+    assert author_name("Reviewer (app)") == "Reviewer (app)" and author_name(None) is None
+    assert is_ai_author("ReconAI") and not is_ai_author("Reviewer (app)")
