@@ -215,7 +215,7 @@ export function EvidenceMindmap({
               </p>
               <p className="mt-1 text-sm leading-relaxed">{finding.description}</p>
               {finding.expected && finding.actual && (
-                <p className="mt-1.5 font-mono text-xs text-secondary">
+                <p className="mt-1.5 font-mono text-xs text-muted-foreground">
                   {finding.expected} → {finding.actual}
                 </p>
               )}
@@ -256,7 +256,7 @@ export function EvidenceMindmap({
                     compact ? 'size-8' : 'size-10',
                     isSelected
                       ? 'scale-125 border-primary bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-                      : 'border-border bg-background text-secondary hover:border-primary hover:text-foreground'
+                      : 'border-border bg-background text-muted-foreground hover:border-primary hover:text-foreground'
                   )}
                 >
                   <FileText size={compact ? 14 : 16} />
@@ -265,7 +265,7 @@ export function EvidenceMindmap({
                   <div
                     className={cn(
                       'absolute left-1/2 top-12 max-w-[160px] -translate-x-1/2 truncate text-center text-xs font-semibold tracking-wider transition-all duration-300',
-                      isSelected ? 'scale-125 text-foreground' : 'text-secondary'
+                      isSelected ? 'scale-125 text-foreground' : 'text-muted-foreground'
                     )}
                   >
                     {file.title}
@@ -276,11 +276,11 @@ export function EvidenceMindmap({
           })}
       </div>
 
-      <p className="pointer-events-none absolute bottom-2 left-3 text-xs text-secondary/70">
+      <p className="pointer-events-none absolute bottom-2 left-3 text-xs text-muted-foreground/70">
         Click files to open their evidence panes · click empty space to close all
       </p>
       {unassignedCount > 0 && (
-        <p className="pointer-events-none absolute bottom-2 right-3 text-xs text-secondary/70">
+        <p className="pointer-events-none absolute bottom-2 right-3 text-xs text-muted-foreground/70">
           {unassignedCount} reference{unassignedCount === 1 ? '' : 's'} not matched to a file
         </p>
       )}

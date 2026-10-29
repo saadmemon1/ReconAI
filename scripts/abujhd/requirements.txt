@@ -1,0 +1,6 @@
+# poppler (pdftoppm, pdftotext, pdfinfo) must also be installed
+anthropic
+requests
+numpy
+Pillow
+openpyxl  # check_vs_workbook.py only

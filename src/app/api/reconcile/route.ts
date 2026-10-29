@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decryptApiKeySession, COOKIE_NAME } from '@/lib/session';
+import { resolveApiKey, COOKIE_NAME } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
 import { fetchSegmentsWithRetry } from '@/lib/fetch-segments';
 import { reconcile, ReconciliationDocument } from '@/engine/reconcile';
@@ -8,14 +8,9 @@ import { unwrapFile } from '@/lib/docai-shapes';
 import { buildLlmRequest, parseModelId, parseStreamEvent, LlmConfigError } from '@/lib/llm-providers';
 
 export async function POST(req: NextRequest) {
-  const encrypted = req.cookies.get(COOKIE_NAME)?.value;
-  if (!encrypted) {
+  const apiKey = await resolveApiKey(req.cookies.get(COOKIE_NAME)?.value);
+  if (!apiKey) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  const session = await decryptApiKeySession(encrypted);
-  if (!session) {
-    return NextResponse.json({ error: 'Session expired' }, { status: 401 });
   }
 
   const body = await req.json();
@@ -55,7 +50,7 @@ export async function POST(req: NextRequest) {
         try {
           for (const fileId of fileIds) {
             const fileRes = await docaiFetch(`/v1/files/${fileId}`, {
-              docaiApiKey: session.apiKey,
+              docaiApiKey: apiKey,
             });
             // F5: fail loudly if DocAI rejects the file (cross-org or missing) —
             // no more silently reconciling an empty/foreign document
@@ -70,7 +65,7 @@ export async function POST(req: NextRequest) {
             send({ type: 'stage', stage: 'retrieval-2' });
             const rawSegments = await fetchSegmentsWithRetry(fileId, fileName, {
               fetchFn: docaiFetch,
-              docaiApiKey: session.apiKey,
+              docaiApiKey: apiKey,
             });
 
             // Get fileName from segments if file metadata doesn't have it

@@ -1,0 +1,4 @@
+{"files": {"receipts": "00000000-0000-0000-0000-000000000001", "statement": "00000000-0000-0000-0000-000000000002", "ledger": "00000000-0000-0000-0000-000000000003"},
+ "names": {"receipts": "receipts.pdf", "statement": "statement.pdf", "ledger": "ledger.xlsx"},
+ "month": "2026-09", "sheet": "General Ledger",
+ "kb_id": "00000000-0000-0000-0000-000000000000"}

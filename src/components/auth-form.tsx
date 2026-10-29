@@ -6,6 +6,7 @@ import { Input } from './ui/input';
 import { Card } from './ui/card';
 import { Label } from './ui/label';
 import { ThreeDotGrid } from './ui/three-dot-grid';
+import { BrandLogo } from './brand-logo';
 
 export function AuthForm() {
   const { submitApiKey } = useAuth();
@@ -27,6 +28,7 @@ export function AuthForm() {
   return (
     <ThreeDotGrid dotColor="#334155">
       <Card className="w-full max-w-md p-8">
+        <BrandLogo className="mx-auto mb-6" />
         <h1 className="text-display text-center mb-8">ReconAI</h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -37,7 +39,7 @@ export function AuthForm() {
               onChange={e => setApiKey(e.target.value)} required
               autoComplete="off"
             />
-            <p className="mt-1.5 text-xs text-secondary">
+            <p className="mt-1.5 text-xs text-muted-foreground">
               Get your API key from platform.providus.ai.
             </p>
           </div>

@@ -55,6 +55,10 @@ const TableRow = React.forwardRef<HTMLTableRowElement, React.HTMLAttributes<HTML
 );
 TableRow.displayName = "TableRow";
 
+/** DocAI library table header band (docai-web uploaded-documents-section.tsx): slate, white uppercase labels. */
+export const TABLE_HEAD_BAND =
+  "h-11 bg-[#74737f] px-4 text-[11px] font-bold uppercase tracking-wide text-white hover:bg-[#74737f]";
+
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
   React.ThHTMLAttributes<HTMLTableCellElement>

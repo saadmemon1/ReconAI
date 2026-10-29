@@ -524,7 +524,7 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
   return (
     <div
       className={cn(
-        'flex h-[520px] flex-col overflow-hidden rounded-xl border border-border bg-muted/30',
+        'flex h-[520px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm',
         className
       )}
       style={style}
@@ -540,16 +540,16 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
               <div className="flex shrink-0 items-center gap-1">
                 <div className="flex items-center gap-0.5 rounded-md border border-border px-1">
                   <button
-                    className="rounded p-0.5 text-secondary hover:text-foreground disabled:opacity-30"
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
                     onClick={zoomOut}
                     disabled={zoom <= 1}
                     title="Zoom out"
                   >
                     <ZoomOut className="size-3.5" />
                   </button>
-                  <span className="min-w-6 text-center text-xs tabular-nums text-secondary">×{zoom}</span>
+                  <span className="min-w-6 text-center text-xs tabular-nums text-muted-foreground">×{zoom}</span>
                   <button
-                    className="rounded p-0.5 text-secondary hover:text-foreground disabled:opacity-30"
+                    className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
                     onClick={zoomIn}
                     disabled={zoom >= 3}
                     title="Zoom in"
@@ -576,7 +576,7 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
                         )}
                       />
                     </button>
-                    <span className="text-[11px] text-secondary">{showAllPages ? 'All pages' : 'Cited'}</span>
+                    <span className="text-[11px] text-muted-foreground">{showAllPages ? 'All pages' : 'Cited'}</span>
                   </div>
                 )}
                 <Button
@@ -592,7 +592,7 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="px-1.5 text-secondary hover:text-foreground"
+                    className="px-1.5 text-muted-foreground hover:text-foreground"
                     title="Close pane"
                     onClick={onClose}
                   >
@@ -605,14 +605,14 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
 
           {/* Full-document scrollable page stack with highlight overlays */}
           <div ref={scrollRef} className="flex-1 overflow-auto p-3">
-            {pdfStatus === 'loading' && <Loader2 className="mx-auto mt-10 size-6 animate-spin text-secondary" />}
+            {pdfStatus === 'loading' && <Loader2 className="mx-auto mt-10 size-6 animate-spin text-muted-foreground" />}
             {pdfStatus === 'error' && (
-              <p className="mt-10 text-center text-xs text-secondary">Failed to load the PDF. Open file to view it directly.</p>
+              <p className="mt-10 text-center text-xs text-muted-foreground">Failed to load the PDF. Open file to view it directly.</p>
             )}
             {pdfStatus === 'ready' && (
               <>
                 {stillMissed.length > 0 && (
-                  <p className="mb-2 w-full max-w-[420px] rounded-md border border-border bg-background/80 px-2 py-1 text-center text-xs text-secondary">
+                  <p className="mb-2 w-full max-w-[420px] rounded-md border border-border bg-background/80 px-2 py-1 text-center text-xs text-muted-foreground">
                     {stillMissed.length} citation{stillMissed.length === 1 ? '' : 's'} not matched to a location
                   </p>
                 )}
@@ -690,7 +690,7 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
               </>
             )}
             {pdfStatus === 'idle' && (
-              <p className="mt-10 text-center text-xs text-secondary">
+              <p className="mt-10 text-center text-xs text-muted-foreground">
                 {file.fileId
                   ? 'No citation could be located on the document.'
                   : 'PDF unavailable for this report (legacy).'}
@@ -703,7 +703,7 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
           {hasCitations && (
           <div className="max-h-40 space-y-1 overflow-y-auto border-t border-border p-2">
             {rows.length === 0 && misses.length === 0 && (
-              <p className="px-2 py-1 text-xs text-secondary">No citations for this file.</p>
+              <p className="px-2 py-1 text-xs text-muted-foreground">No citations for this file.</p>
             )}
             {rows.map(r => (
               <button
@@ -717,15 +717,15 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
                   'flex w-full items-start gap-2 rounded-md border-l-2 px-2 py-1.5 text-left text-xs transition-colors',
                   r.key === activeRowKey
                     ? 'border-yellow-400 bg-yellow-50 text-foreground'
-                    : 'border-border text-secondary hover:bg-muted'
+                    : 'border-border text-muted-foreground hover:bg-muted'
                 )}
               >
                 <MapPin className="mt-0.5 size-3 shrink-0" />
                 <span className="min-w-0 flex-1">
-                  <span className="mr-1 font-mono text-secondary">p{r.page}</span>
+                  <span className="mr-1 font-mono text-muted-foreground">p{r.page}</span>
                   <span className="line-clamp-2">{r.label}</span>
                   {r.reason && (
-                    <span className="mt-0.5 block text-[11px] leading-snug text-secondary/80 line-clamp-2">
+                    <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground/80 line-clamp-2">
                       {r.reason}
                     </span>
                   )}
@@ -737,11 +737,11 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
               return (
                 <p
                   key={`miss${i}`}
-                  className="border-l-2 border-dashed border-border px-2 py-1 text-xs italic text-secondary/70"
+                  className="border-l-2 border-dashed border-border px-2 py-1 text-xs italic text-muted-foreground/70"
                 >
                   {stripCitationReason(m)}
                   {reason && (
-                    <span className="mt-0.5 block text-[11px] not-italic leading-snug text-secondary/80 line-clamp-2">
+                    <span className="mt-0.5 block text-[11px] not-italic leading-snug text-muted-foreground/80 line-clamp-2">
                       {reason}
                     </span>
                   )}
@@ -752,7 +752,7 @@ export function EvidencePdfViewer({ file, onClose, className, style }: { file: M
           )}
         </>
       ) : (
-        <p className="p-6 text-center text-xs text-secondary">
+        <p className="p-6 text-center text-xs text-muted-foreground">
           Select a file in the orbit to view its evidence.
         </p>
       )}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { decryptApiKeySession, COOKIE_NAME } from '@/lib/session';
+import { resolveApiKey, COOKIE_NAME } from '@/lib/session';
 import { docaiFetch } from '@/lib/docai-proxy';
 import { isSafeProxyPath } from '@/lib/proxy-path-validation';
 
@@ -37,15 +37,9 @@ async function handleRequest(
   method: string
 ) {
   const { path } = await params;
-  const encrypted = req.cookies.get(COOKIE_NAME)?.value;
-  
-  if (!encrypted) {
+  const apiKey = await resolveApiKey(req.cookies.get(COOKIE_NAME)?.value);
+  if (!apiKey) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-  }
-
-  const session = await decryptApiKeySession(encrypted);
-  if (!session) {
-    return NextResponse.json({ error: 'Session expired' }, { status: 401 });
   }
 
   // Security gate (F1 fix): only relay known-safe DocAI paths. Blocks path
@@ -74,7 +68,7 @@ async function handleRequest(
   const res = await docaiFetch(`${docaiPath}${queryString}`, {
     method,
     body,
-    docaiApiKey: session.apiKey,
+    docaiApiKey: apiKey,
   });
 
   // Forward response — binary-safe: text responses pass through as text,

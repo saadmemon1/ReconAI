@@ -28,7 +28,7 @@ const GEMINI_CLOUD: ModelInfo[] = [
 
 // OpenAI cloud models. Keep the provider prefix in the option value so the
 // server can route the request without exposing API keys to the browser.
-const OPENAI_CLOUD: ModelInfo[] = [
+export const OPENAI_CLOUD: ModelInfo[] = [
   { id: 'openai/gpt-5.6-luna', provider: 'openai', name: 'GPT-5.6 Luna', available: true },
 ];
 

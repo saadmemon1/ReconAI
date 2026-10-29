@@ -26,6 +26,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  TABLE_HEAD_BAND,
 } from './ui/table';
 import {
   overbillingTone,
@@ -60,7 +61,7 @@ const DOT_COLORS: Record<string, string> = {
   critical: 'bg-red-500',
   high: 'bg-orange-500',
   medium: 'bg-blue-500',
-  low: 'bg-slate-400',
+  low: 'bg-muted-foreground',
 };
 
 export function ReportViewer({ report }: { report: ReconciliationReport }) {
@@ -141,14 +142,14 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         <h3 className="text-h3 mb-4">Summary</h3>
         <p className="text-base leading-relaxed whitespace-pre-wrap">{renderInlineFormatting(summary)}</p>
 
-        <div className="text-xs text-secondary mt-4 space-y-1">
+        <div className="text-xs text-muted-foreground mt-4 space-y-1">
           <p>Generated: {new Date(timestamp).toLocaleString()}</p>
         </div>
       </Card>
 
       {/* Findings Summary */}
       <Card className="p-6">
-        <h3 className="text-h3 mb-4">Findings by Severity</h3>
+        <h3 className="text-h3 mb-4">Findings by severity</h3>
         <div className="flex gap-4 mb-6">
           <SeverityBadge label="Critical" count={criticalCount} severity="critical" active={activeSeverities.has('critical')} onClick={() => toggleSeverity('critical')} />
           <SeverityBadge label="High" count={highCount} severity="high" active={activeSeverities.has('high')} onClick={() => toggleSeverity('high')} />
@@ -158,7 +159,7 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         {activeSeverities.size > 0 && (
           <button
             onClick={() => setActiveSeverities(new Set())}
-            className="text-xs text-secondary underline mb-3 hover:text-foreground transition-colors"
+            className="text-xs text-muted-foreground underline mb-3 hover:text-foreground transition-colors"
           >
             Clear filter ({filteredFindings.length} shown)
           </button>
@@ -166,7 +167,7 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
 
         <div className="space-y-3">
           {filteredFindings.length === 0 ? (
-            <p className="text-sm text-secondary">
+            <p className="text-sm text-muted-foreground">
               {activeSeverities.size > 0 ? 'No findings match the selected severities.' : 'No discrepancies found.'}
             </p>
           ) : (
@@ -188,7 +189,7 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
         <div key={group.id} className="animate-fade-up" style={{ animationDelay: `${gi * 60}ms` }}>
           <Card className="p-6">
           <h3 className="text-h3 mb-1">Line Items</h3>
-          <p className="text-xs text-secondary mb-4">
+          <p className="text-xs text-muted-foreground mb-4">
             {group.documents.map(d => {
               const cls = documentClassifications.find(c => c.document === d);
               return cls ? `${cls.fileName} (${cls.type.replace(/_/g, ' ')})` : `Doc ${d}`;
@@ -203,8 +204,8 @@ export function ReportViewer({ report }: { report: ReconciliationReport }) {
       {/* Unmatched */}
       {unmatchedDocuments.length > 0 && (
         <Card className="p-6 border-warning/20">
-          <h3 className="text-h3 mb-4 text-warning">Unmatched Documents</h3>
-          <p className="text-sm text-secondary">
+          <h3 className="text-h3 mb-4 text-warning">Unmatched documents</h3>
+          <p className="text-sm text-muted-foreground">
             These documents could not be grouped with any others:
           </p>
           <ul className="list-disc pl-4 mt-2 text-sm">
@@ -234,9 +235,9 @@ function KPIBox({ label, value, sub, tone }: {
   };
   return (
     <div className="bg-muted rounded-lg p-3 border border-border">
-      <p className="text-xs text-secondary mb-1">{label}</p>
+      <p className="text-xs text-muted-foreground mb-1">{label}</p>
       <p className={`text-h2 font-mono ${tone ? toneClasses[tone] : ''}`}>{value}</p>
-      {sub && <p className="text-xs text-secondary mt-1">{sub}</p>}
+      {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
     </div>
   );
 }
@@ -272,10 +273,10 @@ function DraftSection({ draft }: { draft: EmailDraft }) {
   return (
     <div className="rounded-md border border-border p-4">
       <div className="mb-3 flex items-center gap-2">
-        <Mail className="size-4 text-secondary" />
+        <Mail className="size-4 text-muted-foreground" />
         <span className="text-sm font-medium">{draft.to}</span>
       </div>
-      <label className="mb-1 block text-xs text-secondary">Subject</label>
+      <label className="mb-1 block text-xs text-muted-foreground">Subject</label>
       {/* Locked-live fields: editable enough to show a blinking caret and
           select text, but every mutation (typing, backspace, paste, drop)
           is blocked at beforeinput — the draft is fixed once composed.
@@ -289,7 +290,7 @@ function DraftSection({ draft }: { draft: EmailDraft }) {
         onDrop={e => e.preventDefault()}
         className="mb-3"
       />
-      <label className="mb-1 block text-xs text-secondary">Body</label>
+      <label className="mb-1 block text-xs text-muted-foreground">Body</label>
       <textarea
         value={draft.body}
         onChange={() => {}}
@@ -317,8 +318,8 @@ function DraftSection({ draft }: { draft: EmailDraft }) {
 function SupplierEmailCard({ drafts }: { drafts: EmailDraft[] }) {
   return (
     <Card className="p-6">
-      <h3 className="text-h3 mb-1">Supplier Emails</h3>
-      <p className="mb-4 text-xs text-secondary">
+      <h3 className="text-h3 mb-1">Supplier emails</h3>
+      <p className="mb-4 text-xs text-muted-foreground">
         Drafted from this reconciliation's findings. Review the recipient, then copy or send.
       </p>
       <div className="space-y-4">
@@ -357,12 +358,12 @@ function FindingsTable({ findings, groups, classifications }: {
     : findings;
 
   return (
-    <div className="rounded-lg border border-border bg-background shadow-sm">
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
       {/* Sticky filter bar — pins just below the sticky tab bar (--tabbar-h)
           while the page scrolls (table has NO fixed height; it grows naturally
           and the whole page scrolls, so sticky works against the page, not an
           inner scrollbox) */}
-      <div className="sticky top-[var(--tabbar-h)] z-10 flex flex-wrap gap-4 items-center justify-between px-4 py-3 border-b border-border bg-background rounded-t-lg">
+      <div className="sticky top-[var(--tabbar-h)] z-10 flex flex-wrap gap-4 items-center justify-between px-4 py-3 border-b border-border bg-card rounded-t-xl">
         <div className="flex gap-2 flex-wrap">
           <Input
             placeholder="Filter findings..."
@@ -372,7 +373,7 @@ function FindingsTable({ findings, groups, classifications }: {
           />
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-xs text-secondary">{filtered.length} of {findings.length}</span>
+          <span className="text-xs text-muted-foreground">{filtered.length} of {findings.length}</span>
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
               Columns
@@ -392,14 +393,14 @@ function FindingsTable({ findings, groups, classifications }: {
         </div>
       </div>
       <Table className="w-full" wrapperClassName="">
-        <TableHeader className="sticky top-[calc(var(--tabbar-h)+61px)] z-10 bg-background">
-          <TableRow className="bg-muted/50 hover:bg-muted/50">
-            {visibleColumns.includes('Status') && <TableHead className="w-[110px]">Status</TableHead>}
-            {visibleColumns.includes('Doc') && <TableHead className="w-[140px]">Doc</TableHead>}
-            {visibleColumns.includes('Description') && <TableHead>Description</TableHead>}
-            {visibleColumns.includes('Expected') && <TableHead className="w-[100px] text-right">Expected</TableHead>}
-            {visibleColumns.includes('Actual') && <TableHead className="w-[100px] text-right">Actual</TableHead>}
-            {visibleColumns.includes('Evidence') && <TableHead className="w-[130px] text-right">Evidence</TableHead>}
+        <TableHeader className="sticky top-[calc(var(--tabbar-h)+61px)] z-10">
+          <TableRow className="border-0 hover:bg-transparent">
+            {visibleColumns.includes('Status') && <TableHead className={cn(TABLE_HEAD_BAND, 'w-[110px]')}>Status</TableHead>}
+            {visibleColumns.includes('Doc') && <TableHead className={cn(TABLE_HEAD_BAND, 'w-[140px]')}>Doc</TableHead>}
+            {visibleColumns.includes('Description') && <TableHead className={TABLE_HEAD_BAND}>Description</TableHead>}
+            {visibleColumns.includes('Expected') && <TableHead className={cn(TABLE_HEAD_BAND, 'w-[100px] text-right')}>Expected</TableHead>}
+            {visibleColumns.includes('Actual') && <TableHead className={cn(TABLE_HEAD_BAND, 'w-[100px] text-right')}>Actual</TableHead>}
+            {visibleColumns.includes('Evidence') && <TableHead className={cn(TABLE_HEAD_BAND, 'w-[130px] text-right')}>Evidence</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -407,7 +408,7 @@ function FindingsTable({ findings, groups, classifications }: {
             filtered.map(f => (
               <TableRow key={f.id}>
                 {visibleColumns.includes('Status') && (
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="px-4 py-3 whitespace-nowrap">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger render={<Badge variant="outline" />} className={`uppercase text-xs ${severityBadgeColors[f.severity] ?? severityBadgeColors.low}`}>
@@ -419,21 +420,21 @@ function FindingsTable({ findings, groups, classifications }: {
                   </TableCell>
                 )}
                 {visibleColumns.includes('Doc') && (
-                  <TableCell className="whitespace-nowrap">
-                    <span className="text-xs text-secondary font-mono">{f.document}</span>
+                  <TableCell className="px-4 py-3 whitespace-nowrap">
+                    <span className="text-xs text-muted-foreground font-mono">{f.document}</span>
                   </TableCell>
                 )}
                 {visibleColumns.includes('Description') && (
-                  <TableCell className="min-w-[260px] text-sm leading-relaxed">{f.description}</TableCell>
+                  <TableCell className="min-w-[260px] px-4 py-3 text-sm leading-relaxed">{f.description}</TableCell>
                 )}
                 {visibleColumns.includes('Expected') && (
-                  <TableCell className="text-right font-mono whitespace-nowrap">{f.expected ?? '-'}</TableCell>
+                  <TableCell className="px-4 py-3 text-right font-mono whitespace-nowrap">{f.expected ?? '-'}</TableCell>
                 )}
                 {visibleColumns.includes('Actual') && (
-                  <TableCell className="text-right font-mono whitespace-nowrap">{f.actual ?? '-'}</TableCell>
+                  <TableCell className="px-4 py-3 text-right font-mono whitespace-nowrap">{f.actual ?? '-'}</TableCell>
                 )}
                 {visibleColumns.includes('Evidence') && (
-                  <TableCell className="text-right whitespace-nowrap">
+                  <TableCell className="px-4 py-3 text-right whitespace-nowrap">
                     <EvidenceButton finding={f} group={groupByFinding.get(f.id) || null} classifications={classifications} />
                   </TableCell>
                 )}
@@ -533,7 +534,7 @@ function EvidenceButton({ finding, group, classifications }: {
             'sm:max-w-[calc(100vw-2rem)] sm:h-[calc(100vh-2rem)] flex flex-col overflow-y-auto',
           )}
         >
-          <DialogTitle className="text-h3 font-semibold leading-6">Evidences Mindmap</DialogTitle>
+          <DialogTitle className="text-h3 font-semibold leading-6">Evidence map</DialogTitle>
           {/* Split: orbit stays square on the left (compacts for panes); the
               pane grid slides in on the right. Single pane = full-width pane
               exactly like the old single viewer. min-h-0 lets the row shrink
@@ -571,7 +572,7 @@ function EvidenceButton({ finding, group, classifications }: {
                         aria-pressed={selected}
                         className={cn(
                           'size-3 shrink-0 cursor-pointer rounded-full transition-all',
-                          DOT_COLORS[finding.severity] ?? 'bg-slate-400',
+                          DOT_COLORS[finding.severity] ?? 'bg-muted-foreground',
                           selected
                             ? 'opacity-100 ring-2 ring-foreground ring-offset-2 ring-offset-background'
                             : 'opacity-50 hover:opacity-100'
@@ -579,7 +580,7 @@ function EvidenceButton({ finding, group, classifications }: {
                       />
                     );
                   })}
-                  <span className="mt-auto text-[10px] tabular-nums text-secondary">
+                  <span className="mt-auto text-[10px] tabular-nums text-muted-foreground">
                     {visibleFiles.length}/{citedFiles.length}
                   </span>
                 </div>
@@ -621,7 +622,7 @@ function EvidenceButton({ finding, group, classifications }: {
                     ))}
                   </div>
                   {hiddenCited.length > 0 && (
-                    <p className="mt-2 text-xs text-secondary">
+                    <p className="mt-2 text-xs text-muted-foreground">
                       {hiddenCited.length} more file{hiddenCited.length === 1 ? '' : 's'} in this finding —
                       click their orbit nodes or file dots to swap panes.
                     </p>

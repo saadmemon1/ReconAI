@@ -50,6 +50,16 @@ export async function decryptApiKeySession(
   }
 }
 
+/**
+ * The DocAI key for a request: the sealed cookie if present and valid, else
+ * DOCAI_API_KEY from the environment (single-tenant / local dev — the app
+ * then skips the paste prompt). Null means not authenticated.
+ */
+export async function resolveApiKey(cookieValue: string | undefined): Promise<string | null> {
+  const session = cookieValue ? await decryptApiKeySession(cookieValue) : null;
+  return session?.apiKey ?? process.env.DOCAI_API_KEY ?? null;
+}
+
 export function getSessionCookieHeader(encryptedToken: string): string {
   // 30 days: a key's own expiry (none / 1 year / 30 / 7 days) is configured
   // per key in the platform and isn't exposed by the API, so this cookie

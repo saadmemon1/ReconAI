@@ -11,7 +11,7 @@ import { createElement, type ReactNode } from 'react';
 const COLOR_CLASS: Record<string, string> = {
   danger: 'text-destructive',
   success: 'text-success',
-  secondary: 'text-secondary',
+  secondary: 'text-muted-foreground',
 };
 
 const COLORED_BOLD_RE = /\*\*\[(danger|success|secondary)\]([^*]+)\*\*/;
